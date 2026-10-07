@@ -216,3 +216,21 @@ test('Watcher-Agent verschwindet → Session beendet (ended); taucht er wieder a
   assert.equal(repo.getSession('s1').ended_at, null);
   w.stop();
 });
+
+test('Fortsetzen ersetzt einen Watcher-Agenten derselben (Arena-)Session statt sie zu übernehmen', async () => {
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-hist-')));
+  const bus = createBus();
+  const state = createState({ bus });
+  const repo = setup();
+  const registry = createRegistry({ tools: [{ id: 'fake', name: 'Fake', command: 'node', args: [FAKE], color: '#888888' }] });
+  manager = createSessionManager({ state, bus, repo, registry });
+  const first = await manager.createSession({ toolId: 'fake', cwd });
+  const oldSession = state.get(first).sessionId;
+  await manager.close(first);
+  // Watcher meldet die Sitzungsdatei der geschlossenen Session
+  state.upsert(createAgent({ id: 'w:fake:fake-1', kind: 'main', toolId: 'fake', sessionId: 'fake-1', project: 'p', cwd, source: 'watch' }));
+  const id = await manager.resume(oldSession);
+  assert.equal(state.get('w:fake:fake-1'), undefined);
+  assert.equal(repo.getSession(state.get(id).sessionId).parent_session_id, oldSession);
+  fs.rmSync(cwd, { recursive: true, force: true });
+});

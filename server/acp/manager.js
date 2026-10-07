@@ -202,11 +202,13 @@ export function createSessionManager({
     if (!canLoad(tool.id)) throw new Error(`${tool.name ?? tool.id} kann Sessions nicht laden`);
     const taken = state.all().some((a) => a.source === 'acp' && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === external || sid === s.id)));
     if (taken) throw new Error('Session wird bereits in der Arena gesteuert');
-    // läuft die Session gerade extern (Watcher), wird sie übernommen
-    const w = state.all().find((a) => a.source === 'watch' && a.kind === 'main' && [a.sessionId, a.acpSessionId].includes(external));
-    if (w) return adopt(w.id);
+    // Der Watcher zeigt auch die Sitzungsdatei einer gerade geschlossenen Arena-Session – deren Agent wird ersetzt.
+    // Eine externe Session (source watch), die gerade läuft, wird dagegen übernommen.
+    const watched = state.all().filter((a) => a.source === 'watch' && [a.sessionId, a.acpSessionId].includes(external));
+    const w = watched.find((a) => a.kind === 'main');
+    if (w && s.source === 'watch') return adopt(w.id);
     const dir = checkDir(s.cwd);
-    return launch({
+    const id = await launch({
       tool, cwd: dir, mode: s.mode === 'auto' ? 'auto' : 'confirm', title: s.title, sessionId: randomUUID(), acpSessionId: external,
       load: true, parentSessionId: s.id,
       open: async (client, session, init) => {
@@ -214,6 +216,8 @@ export function createSessionManager({
         return session.load(() => client.loadSession(external));
       },
     });
+    for (const a of state.all()) if (a.source === 'watch' && (watched.some((x) => x.id === a.id) || (w && a.parentId === w.id))) state.remove(a.id);
+    return id;
   }
 
   // status: 'done' (Nutzer schließt), 'ended' (Server wird beendet)

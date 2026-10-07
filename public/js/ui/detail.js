@@ -105,7 +105,7 @@ export class DetailCard {
       ? `<div class="cur" style="--c:${statusColor}">${svgIcon(STATIONS[a.category]?.icon || ICON.bolt)}<span><b>${esc(a.tool)}</b>${a.detail ? `<em>${esc(a.detail)}</em>` : ''}</span></div>`
       : '';
     const tokens = a.tokens || { input: 0, output: 0, cache: 0 };
-    const acp = a.source === 'acp' && a.kind === 'main';
+    const acp = a.source === 'acp' && a.kind === 'main' && !a.replay; // Wiedergabe: keine Aktionen
     const diffs = this.diffsOf(a);
     const terms = this.getTerminals(a.id);
     const counts = { plan: a.plan?.length || 0, diffs: diffs.length, terms: terms.length, subs: children.length };
@@ -166,7 +166,7 @@ export class DetailCard {
 
   errorBox(a) {
     const e = a.error;
-    const canRestart = a.source === 'acp' && a.kind === 'main' && a.launch;
+    const canRestart = a.source === 'acp' && a.kind === 'main' && a.launch && !a.replay;
     return `<div class="d-error">
       <div class="d-err-msg">${svgIcon(ICON.close)}<span>${esc(e.message || 'Fehler')}</span></div>
       ${e.stderrTail ? `<pre>${esc(e.stderrTail.split('\n').slice(-12).join('\n'))}</pre>` : ''}

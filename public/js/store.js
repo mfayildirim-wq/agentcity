@@ -3,6 +3,7 @@ const MAX_EVENTS = 40;
 const MAX_CHAT = 400;
 const MAX_DIFFS = 60;
 const MAX_TERM_DATA = 64 * 1024; // wie der Ringpuffer des Servers
+const MAX_BUFFER = 50_000; // gepufferte Live-Nachrichten während der Wiedergabe
 
 export function createStore() {
   const state = {
@@ -18,7 +19,12 @@ export function createStore() {
     meetingView: null, // geöffnete Besprechung (Chat-Leiste im Meeting-Modus) oder null
     connection: 'off', // live | off | demo
     clockOffset: 0, // Serverzeit − Browserzeit
+    playback: null, // Wiedergabe (Zeitstrahl): { t } – Figuren zeigen rekonstruierten Zustand, Live-Updates gepuffert
   };
+  // Wiedergabe: Live-Zustand der Agenten und gepufferte Server-Nachrichten
+  let live = null; // { agents, selected }
+  let buffer = [];
+  let overflow = false;
   const subs = new Set();
   const ptySubs = new Set(); // Terminal-Ausgabe geht direkt an die xterm-Ansichten (ohne Neuzeichnen)
   let changes = new Set();
@@ -51,6 +57,8 @@ export function createStore() {
   const toMap = (list = []) => new Map(list.map((x) => [x.id, x]));
 
   function applySnapshot(snap) {
+    // in der Wiedergabe nicht anwenden (sonst überschriebe der Live-Stand die Rekonstruktion)
+    if (state.playback) { hold({ type: 'snapshot', ...snap }); return; }
     if (snap.now) state.clockOffset = snap.now - Date.now();
     const prev = state.agents;
     state.agents = new Map((snap.agents || []).map((a) => [a.id, mergeAgent(prev.get(a.id), a)]));
@@ -223,6 +231,7 @@ export function createStore() {
 
   // Leert alle Agenten-Daten (z. B. beim Wechsel Demo ↔ Live)
   function clear() {
+    if (state.playback) { live = null; buffer = []; state.playback = null; changed('playback'); }
     state.agents = new Map();
     state.permissions = new Map();
     state.chats = {};
@@ -235,8 +244,56 @@ export function createStore() {
     changed('agents'); changed('tasks'); changed('meetings');
   }
 
-  // Server-Nachricht → passende apply-Funktion
+  // ---------------------------------------------------------------- Wiedergabe
+  function hold(msg) {
+    if (buffer.length >= MAX_BUFFER) { overflow = true; buffer.shift(); }
+    buffer.push(msg);
+  }
+
+  // Wiedergabe starten: Live-Agenten beiseitelegen, ab jetzt Nachrichten puffern
+  function enterPlayback() {
+    if (state.playback) return false;
+    live = { agents: state.agents, selected: state.selected };
+    buffer = [];
+    overflow = false;
+    state.playback = { t: null };
+    changed('playback');
+    return true;
+  }
+
+  // rekonstruierten Zustand zum Zeitpunkt t anzeigen
+  function setPlaybackAgents(t, agents = []) {
+    if (!state.playback) enterPlayback();
+    state.playback = { t };
+    state.agents = new Map(agents.map((a) => [a.id, a]));
+    if (state.selected && !state.agents.has(state.selected)) { state.selected = null; changed('selected'); }
+    changed('agents'); changed('playback');
+  }
+
+  // zurück zu Live: Live-Agenten wiederherstellen, gepufferte Nachrichten anwenden.
+  // Rückgabe: true, wenn Nachrichten verloren gingen (dann ist ein frischer Snapshot nötig – macht main.js ohnehin)
+  function exitPlayback() {
+    if (!state.playback) return false;
+    const held = buffer;
+    const lost = overflow;
+    state.agents = live?.agents ?? new Map();
+    const sel = live?.selected ?? null;
+    live = null;
+    buffer = [];
+    overflow = false;
+    state.playback = null;
+    for (const msg of held) dispatch(msg);
+    // in der Wiedergabe gewählte Figur behalten, wenn sie live existiert, sonst die vorherige Auswahl
+    if (!state.selected || !state.agents.has(state.selected)) select(sel && state.agents.has(sel) ? sel : null);
+    changed('agents'); changed('playback'); changed('permissions'); changed('chats');
+    return lost;
+  }
+
+  const bufferedCount = () => buffer.length;
+
+  // Server-Nachricht → passende apply-Funktion (in der Wiedergabe gepuffert)
   function dispatch(msg) {
+    if (state.playback) { hold(msg); return true; }
     switch (msg.type) {
       case 'snapshot': applySnapshot(msg); return true;
       case 'agent.update': applyAgentUpdate(msg.agent); return true;
@@ -262,5 +319,6 @@ export function createStore() {
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
     applyPermission, applyPermissionResolved, applyTask, applyTaskRemove, applyMeeting, applyMeetingMessage, setMeetingView, openMeetings, applyChatHistory, applyTools, select, setConnection,
     applyTerminalList, applyPtyOutput, applyPtyExit, upsertTerminal, onPty, terminalsOf,
+    enterPlayback, setPlaybackAgents, exitPlayback, bufferedCount,
   };
 }

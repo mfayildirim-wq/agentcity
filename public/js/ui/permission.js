@@ -56,6 +56,7 @@ export class PermissionStack {
     });
     window.addEventListener('keydown', (e) => {
       if (!this.list.length || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (document.body.classList.contains('playback')) return; // Karten in der Wiedergabe ausgeblendet
       if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
       if (!document.getElementById('newsession')?.classList.contains('hidden')) return;
       const k = e.key.toLowerCase();

@@ -16,6 +16,8 @@ import { ShellView, OutputView } from './ui/terminal.js';
 import { setTools, agentName, agentColor } from './config.js';
 import { MeetingPicker, MeetingBar, meetingTitle } from './ui/meeting.js';
 import { Board } from './ui/board.js';
+import { Timeline } from './ui/timeline.js';
+import { Archive } from './ui/archive.js';
 
 const params = new URLSearchParams(location.search);
 const store = createStore();
@@ -124,6 +126,48 @@ const board = new Board($('board'), {
 });
 board.onToggle = (on) => $('btn-board').classList.toggle('on', on);
 
+// ---------------------------------------------------------------- Verlauf: Zeitstrahl (Wiedergabe) und Archiv
+// zurück zu Live: Live-Zustand wiederherstellen, gepufferte Nachrichten anwenden, frischen Snapshot holen
+function goLive() {
+  if (!store.state.playback) return;
+  store.exitPlayback();
+  conn.resync();
+}
+const timeline = new Timeline($('timeline'), { store, request: quiet, onLive: goLive, toast });
+const archive = new Archive($('archive'), {
+  request: quiet,
+  toast,
+  async onResume(sessionId) {
+    const res = await request('history.resume', { sessionId }, 90_000);
+    goLive();
+    select(res.agentId);
+    toast('Session fortgesetzt', 'info');
+  },
+});
+archive.onToggle = (on) => {
+  $('btn-archive').classList.toggle('on', on);
+  if (on && board.isOpen) { board.close(); $('btn-board').classList.remove('on'); }
+};
+const toggleTimeline = () => {
+  if (!liveOnly()) return;
+  timeline.toggle();
+  $('btn-timeline').classList.toggle('on', timeline.isOpen);
+};
+const toggleArchive = () => {
+  if (!liveOnly()) return;
+  archive.toggle();
+};
+// Zeitstrahl sitzt über der Chat- bzw. Besprechungsleiste: Abstand nach deren Höhe
+function layoutTimeline() {
+  const bar = ['chat', 'meeting'].map($).find((el) => !el.classList.contains('hidden'));
+  const h = bar?.firstElementChild?.offsetHeight ?? 0;
+  document.body.style.setProperty('--tl-bottom', `${12 + (h ? h + 8 : 0)}px`);
+}
+if (typeof ResizeObserver === 'function') {
+  const ro = new ResizeObserver(layoutTimeline);
+  for (const id of ['chat', 'meeting']) { ro.observe($(id)); if ($(id).firstElementChild) ro.observe($(id).firstElementChild); }
+}
+
 // Figur auf ein Meeting-Pad gezogen: zur geöffneten (bzw. einzigen offenen) Besprechung hinzufügen, sonst neue
 async function dropOnMeeting(agentId) {
   const a = store.state.agents.get(agentId);
@@ -156,7 +200,7 @@ const liveOnly = () => {
 const historyLoaded = new Set();
 function loadChatHistory(id) {
   const a = id && store.state.agents.get(id);
-  if (!a || a.source !== 'acp' || a.kind !== 'main' || historyLoaded.has(id) || store.state.connection !== 'live') return;
+  if (!a || a.source !== 'acp' || a.kind !== 'main' || a.replay || historyLoaded.has(id) || store.state.connection !== 'live') return;
   historyLoaded.add(id);
   quiet('chat.history', { agentId: id, limit: 200 })
     .then((res) => store.applyChatHistory(id, res.messages))
@@ -167,7 +211,7 @@ function loadChatHistory(id) {
 const termsLoaded = new Set();
 function loadTerminals(id) {
   const a = id && store.state.agents.get(id);
-  if (!a || a.source !== 'acp' || termsLoaded.has(id) || store.state.connection !== 'live') return;
+  if (!a || a.source !== 'acp' || a.replay || termsLoaded.has(id) || store.state.connection !== 'live') return;
   termsLoaded.add(id);
   quiet('pty.list', { agentId: id })
     .then((res) => { store.applyTerminalList(id, res.terminals); output.reload(); })
@@ -217,18 +261,25 @@ store.subscribe((s, changes) => {
     detail.render(agents, s.selected, store.now);
     if (changes.has('selected')) list.scrollTo(s.selected);
   }
+  // Wiedergabe: Chat-/Besprechungsleiste und Berechtigungskarten ausgeblendet
+  const playback = !!s.playback;
+  if (changes.has('playback')) {
+    document.body.classList.toggle('playback', playback);
+    timeline.onPlayback(s.playback);
+  }
   const meetingOn = !!(s.meetingView && s.meetings.has(s.meetingView));
-  if (changes.has('meetingView') || changes.has('meetings')) {
-    chat.suppressed = meetingOn;
+  if (changes.has('meetingView') || changes.has('meetings') || changes.has('playback')) {
+    chat.suppressed = meetingOn || playback;
     $('btn-meeting').classList.toggle('on', meetingOn);
   }
-  if (changes.has('agents') || changes.has('selected') || changes.has('chats') || changes.has('meetingView') || changes.has('meetings')) chat.render(s.selected, changes);
-  if (changes.has('meetings') || changes.has('meetingView') || changes.has('agents')) {
-    meetingBar.render(meetingOn ? s.meetingView : null, changes);
+  if (changes.has('agents') || changes.has('selected') || changes.has('chats') || changes.has('meetingView') || changes.has('meetings') || changes.has('playback')) chat.render(s.selected, changes);
+  if (changes.has('meetings') || changes.has('meetingView') || changes.has('agents') || changes.has('playback')) {
+    meetingBar.render(meetingOn && !playback ? s.meetingView : null, changes);
     if (meetingPicker.isOpen && (changes.has('meetings') || changes.has('agents'))) meetingPicker.draw();
   }
   if (changes.has('tasks') || changes.has('agents') || changes.has('selected')) board.render();
   if (changes.has('permissions') || changes.has('agents')) perms.render(s.permissions, s.agents);
+  if (timeline.isOpen) layoutTimeline();
   if (changes.has('connection')) {
     liveEl.dataset.state = s.connection;
     liveEl.title = { live: 'Live verbunden', demo: 'Demo-Modus', off: 'Keine Verbindung' }[s.connection];
@@ -266,6 +317,9 @@ if (window.__arena) window.__arena.conn = conn;
 function setDemo(on) {
   $('btn-demo').classList.toggle('on', on);
   if (on && !demo) {
+    timeline.close();
+    $('btn-timeline').classList.remove('on');
+    archive.close();
     store.clear();
     demo = new Demo(store);
     store.setConnection('demo');
@@ -299,10 +353,13 @@ const toggleMeetingPicker = () => {
   meetingPicker.toggle();
 };
 const toggleBoard = () => {
+  if (!board.isOpen && archive.isOpen) archive.close();
   board.toggle();
   $('btn-board').classList.toggle('on', board.isOpen);
 };
 $('btn-meeting').addEventListener('click', toggleMeetingPicker);
+$('btn-timeline').addEventListener('click', toggleTimeline);
+$('btn-archive').addEventListener('click', toggleArchive);
 $('btn-board').addEventListener('click', toggleBoard);
 // Klick außerhalb schließt die Besprechungsauswahl
 document.addEventListener('pointerdown', (e) => {
@@ -328,7 +385,8 @@ window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea, [contenteditable]')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'Escape') {
-    if (meetingPicker.isOpen) meetingPicker.close();
+    if (store.state.playback) goLive();
+    else if (meetingPicker.isOpen) meetingPicker.close();
     else if (settings.isOpen) settings.close(); else if (newSession.isOpen) newSession.close();
     else if (store.state.meetingView) store.setMeetingView(null);
     else select(null);
@@ -336,6 +394,13 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'b' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleMeetingPicker(); }
   if (e.key === 't' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleBoard(); }
   if (e.key === 'r') { select(null); world.resetView(); }
+  if (e.key === 'z' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleTimeline(); }
+  if (e.key === 'a' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleArchive(); }
+  // Wiedergabe: Pfeiltasten springen 10 s (mit Umschalt 1 min)
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && timeline.isOpen && store.state.playback) {
+    e.preventDefault();
+    timeline.step((e.key === 'ArrowLeft' ? -1 : 1) * (e.shiftKey ? 60_000 : 10_000));
+  }
   if (e.key === 'n' && !newSession.isOpen && !settings.isOpen && !perms.list.length) { e.preventDefault(); openNew(); }
 });
 
