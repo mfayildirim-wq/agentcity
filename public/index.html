@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Arena</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 29 16 16 30 3 16Z' fill='%23d97757'/%3E%3C/svg%3E" />
+  <link rel="stylesheet" href="/css/app.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/build/three.module.js",
+        "three/addons/": "/vendor/three/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="stage"></div>
+  <div id="labels"></div>
+
+  <header class="hud hud-top">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" class="brand-mark"><path d="M16 2 29 16 16 30 3 16Z" /></svg>
+      <span>Agent Arena</span>
+      <span class="live" id="live" title="Verbindung"></span>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="tools">
+      <button class="icon-btn" id="btn-demo" title="Demo-Modus">
+        <svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z" /></svg>
+      </button>
+      <button class="icon-btn" id="btn-labels" title="Namen ein/aus">
+        <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h10M4 18h7" /></svg>
+      </button>
+      <button class="icon-btn" id="btn-reset" title="Ansicht zurücksetzen">
+        <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5" /></svg>
+      </button>
+      <button class="icon-btn" id="btn-panel" title="Liste ein/aus">
+        <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM14 5v14" /></svg>
+      </button>
+    </div>
+  </header>
+
+  <aside class="panel" id="panel">
+    <div class="panel-list" id="list"></div>
+  </aside>
+
+  <section class="detail hidden" id="detail"></section>
+
+  <div class="legend" id="legend"></div>
+
+  <div class="empty hidden" id="empty">
+    <div class="empty-mark"><svg viewBox="0 0 32 32"><path d="M16 2 29 16 16 30 3 16Z" /></svg></div>
+    <div class="empty-title">Keine aktiven Claude-Code-Sessions</div>
+    <button class="btn" id="btn-empty-demo">Demo ansehen</button>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
