@@ -7,7 +7,7 @@ jeder Subagent eine eigene Figur, jedes Projekt ein eigener Raum.
 
 ```bash
 npm install
-npm start          # → http://127.0.0.1:4317
+npm start          # → http://127.0.0.1:4317 (Node ≥ 22.13)
 ```
 
 Demo ohne laufendes Claude Code: http://127.0.0.1:4317/?demo (oder ▶-Knopf oben rechts).
@@ -31,10 +31,38 @@ Demo ohne laufendes Claude Code: http://127.0.0.1:4317/?demo (oder ▶-Knopf obe
 
 ## Funktionsweise
 
-`server.js` (ohne Abhängigkeiten) liest `~/.claude/projects/**/*.jsonl` inkrementell mit,
-inkl. `<session>/subagents/agent-*.jsonl` + `.meta.json`, und streamt den Zustand per
-Server-Sent Events. Das Frontend (`public/`, Three.js) baut daraus die Szene.
-Nur lokal gebunden (127.0.0.1), es werden keine Daten verschickt.
+Der Server (`server/index.js`, Node ≥ 22.13, ESM ohne Build-Schritt) liest
+`~/.claude/projects/**/*.jsonl` inkrementell mit (`server/watchers/claude.js`), inkl.
+`<session>/subagents/agent-*.jsonl` + `.meta.json`, führt den Zustand aller Agenten im Speicher
+und schickt Änderungen per WebSocket (`/ws`) an den Browser. Verlauf und Ereignisse landen in
+SQLite (`node:sqlite`). Das Frontend (`public/`, Three.js) hält einen Store und baut daraus die Szene.
+
+```
+server/
+  index.js          Start: Konfig, DB, Watcher, HTTP + WebSocket
+  config.js         Pfade, Port, Token
+  core/             Modell, Ereignisbus, Zustand
+  db/               Schema, Migration, Repo, Recorder
+  watchers/         externe Sessions (Claude Code)
+  api/              HTTP, WebSocket-Router, Handler
+public/js/          main, store, ws, world, avatar, demo, ui/*
+test/               node --test
+```
+
+## Daten und Sicherheit
+
+- Ablage in `~/.agent-arena/`: `token` (Zugangstoken, Modus 0600), `arena.db` (SQLite)
+- Server nur auf 127.0.0.1; fremde Host-/Origin-Header werden abgewiesen
+- WebSocket nur mit Token (`hello { token }` oder Cookie `arena_token`, das die Startseite setzt),
+  sonst Abbruch mit Code 4401
+- Es werden keine Daten verschickt
+
+## Entwicklung
+
+```bash
+npm run dev        # mit Neustart bei Änderungen
+npm test           # node --test
+```
 
 ## Optionen
 
@@ -43,3 +71,5 @@ Nur lokal gebunden (127.0.0.1), es werden keine Daten verschickt.
 | `PORT`                | 4317                  | Port                               |
 | `WINDOW_MIN`          | 90                    | Sessions der letzten N Minuten     |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects`  | Quelle der Transkripte             |
+| `ARENA_DATA_DIR`      | `~/.agent-arena`      | Token und Datenbank                |
+| `ARENA_DB`            | `<ARENA_DATA_DIR>/arena.db` | SQLite-Datei                 |

@@ -27,6 +27,8 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
     maxPayload: 4 * 1024 * 1024,
     verifyClient: ({ origin, req }) => originAllowed(origin) && isLocalHost(req.headers.host),
   });
+  // Fehler des HTTP-Servers (z. B. EADDRINUSE) reicht ws weiter – dort behandelt
+  wss.on('error', () => {});
   const clients = new Set(); // authentifizierte Verbindungen
 
   const encode = (msg) => JSON.stringify(msg);
