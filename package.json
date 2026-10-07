@@ -5,8 +5,9 @@
   "description": "3D-Live-Visualisierung von Claude-Code-Agenten und Subagenten im Browser",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "start": "node --no-warnings=ExperimentalWarning server/index.js",
+    "dev": "node --no-warnings=ExperimentalWarning --watch server/index.js",
+    "test": "node --no-warnings=ExperimentalWarning --test \"test/*.test.js\""
   },
   "dependencies": {
     "@agentclientprotocol/claude-agent-acp": "^0.87.0",
@@ -19,6 +20,6 @@
     "ws": "^8.22.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13"
   }
 }
