@@ -54,6 +54,13 @@ export function createRepo(db) {
   }
 
   const updateSessionTitle = (id, title) => q('UPDATE sessions SET title = ? WHERE id = ?').run(title, id);
+  const setSessionAcpId = (id, acpSessionId) => q('UPDATE sessions SET acp_session_id = ? WHERE id = ?').run(acpSessionId, id);
+  const setSessionMode = (id, mode) => q('UPDATE sessions SET mode = ? WHERE id = ?').run(mode, id);
+
+  // zuletzt verwendete Projektordner (für die Ordnerauswahl)
+  const recentProjects = (limit = 10) => q(`SELECT p.cwd, p.name, MAX(s.started_at) AS last FROM projects p
+      JOIN sessions s ON s.project_id = p.id WHERE p.cwd IS NOT NULL GROUP BY p.id ORDER BY last DESC LIMIT ?`).all(limit)
+    .map((r) => ({ cwd: r.cwd, name: r.name, last: r.last }));
   const getSession = (id) => q('SELECT * FROM sessions WHERE id = ?').get(id);
 
   function endSession(id, status = 'done') {
@@ -173,7 +180,8 @@ export function createRepo(db) {
   };
 
   return {
-    db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, getSession, endSession,
+    db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, setSessionAcpId, setSessionMode, recentProjects,
+    getSession, endSession,
     upsertAgent, getAgent, insertEvents, insertMessage, insertPermission, resolvePermission, tasks, meetings, history,
   };
 }
