@@ -75,7 +75,7 @@ export function createStore() {
 
   function applyEvent(event) {
     const a = state.agents.get(event.agentId);
-    if (!a) return;
+    if (!a || a.events?.some((e) => e.id === event.id)) return;
     const events = [...(a.events || []), event];
     if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);
     state.agents.set(a.id, { ...a, events });

@@ -28,7 +28,7 @@ const list = new AgentList($('list'), { onSelect: select, onHover: hover });
 const detail = new DetailCard($('detail'), { onSelect: select });
 renderLegend($('legend'));
 
-window.__arena = { world, store };
+if (params.has('debug')) window.__arena = { world, store };
 
 // ---------------------------------------------------------------- Store → Oberfläche
 store.subscribe((s, changes) => {
@@ -64,12 +64,12 @@ const conn = createConnection({
       hideBanner();
       wasLive = true;
     } else if (wasLive || info?.code === 4401) {
-      showBanner(info?.code === 4401 ? 'Zugang abgelehnt – Seite neu laden' : 'Verbindung getrennt – verbinde neu …');
+      showBanner(info?.code === 4401 ? 'Zugang abgelehnt – melde neu an …' : 'Verbindung getrennt – verbinde neu …');
     }
     if (!demo) store.setConnection(st);
   },
 });
-window.__arena.conn = conn;
+if (window.__arena) window.__arena.conn = conn;
 
 // ---------------------------------------------------------------- Demo-Modus
 function setDemo(on) {

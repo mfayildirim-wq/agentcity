@@ -91,3 +91,26 @@ test('Recorder schreibt Ereignisse gebündelt und Agenten sofort', async () => {
   assert.equal(repo.getAgent('a1').model, 'y');
   rec.stop();
 });
+
+test('Recorder.stop schreibt entprellte Agenten und gepufferte Ereignisse noch weg', () => {
+  const { repo } = setup();
+  const bus = createBus();
+  const state = createState({ bus });
+  const rec = createRecorder({ bus, repo, state, flushMs: 10_000, debounceMs: 10_000 });
+  const a = createAgent({ id: 'a1', sessionId: 's1', toolId: 'claude', project: 'p' });
+  state.upsert(a);
+  state.upsert({ ...a, model: 'spät' });
+  state.remove('a1'); // auch wenn der Agent schon weg ist
+  bus.emit('event', { event: { ...createEvent('a1', 'text', { label: 'x' }, 1), sessionId: 's1' } });
+  rec.stop();
+  assert.equal(repo.getAgent('a1').model, 'spät');
+  assert.equal(repo.history.events('s1').length, 1);
+});
+
+test('insertEvents ignoriert doppelte Ids', () => {
+  const { repo } = setup();
+  const e = { ...createEvent('a1', 'text', { label: 'x' }, 1), sessionId: 's1' };
+  repo.insertEvents([e]);
+  repo.insertEvents([e, e]);
+  assert.equal(repo.history.events('s1').length, 1);
+});

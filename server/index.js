@@ -19,7 +19,7 @@ const registry = { list: () => [], get: () => null };
 const bus = createBus();
 const state = createState({ bus });
 const recorder = createRecorder({ bus, repo, state });
-const watchers = startWatchers({ state, config, autoStart: false });
+const watchers = startWatchers({ state, bus, config, autoStart: false });
 
 const server = createHttpServer({ config });
 const ws = attachWs({

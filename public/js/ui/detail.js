@@ -32,7 +32,7 @@ export class DetailCard {
     const st = STATUS[a.status] || STATUS.idle;
     const parent = a.parentId && this.agents.find((x) => x.id === a.parentId);
     const children = this.agents.filter((x) => x.parentId === a.id);
-    const statusColor = a.status === 'tool' && a.category ? STATIONS[a.category].color : st.color;
+    const statusColor = a.status === 'tool' && a.category ? (STATIONS[a.category]?.color ?? st.color) : st.color;
     const current = a.status === 'tool' && a.tool
       ? `<div class="cur" style="--c:${statusColor}">${svgIcon(STATIONS[a.category]?.icon || ICON.bolt)}<span><b>${esc(a.tool)}</b>${a.detail ? `<em>${esc(a.detail)}</em>` : ''}</span></div>`
       : '';

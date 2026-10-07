@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 export const ARENA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const DATA_DIR = process.env.ARENA_DATA_DIR || path.join(os.homedir(), '.agent-arena');
-export const PORT = Number(process.env.PORT ?? 4317);
+export const PORT = Number(process.env.PORT || 4317);
 export const HOST = '127.0.0.1';
 export const WINDOW_MIN = Number(process.env.WINDOW_MIN || 90);
 export const CLAUDE_PROJECTS_DIR = process.env.CLAUDE_PROJECTS_DIR || path.join(os.homedir(), '.claude', 'projects');

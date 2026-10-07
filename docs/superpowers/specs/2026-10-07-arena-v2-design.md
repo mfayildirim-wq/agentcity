@@ -72,8 +72,9 @@ Alle Quellen (ACP, Watcher, Demo) erzeugen dieselben Objekte:
   Client → Server: `session.create, session.prompt, session.cancel, session.adopt, permission.answer, pty.input,
   pty.resize, task.create|update|assign, meeting.create|message, settings.agents.save|test, history.query`.
   Server → Client: `snapshot, agent.update, event, permission.request, pty.output, task.update, meeting.update,
-  error`. Verbindung erfordert `?token=` (Token steht in `~/.agent-arena/token`, wird beim Öffnen der Startseite
-  per Cookie gesetzt).
+  error`. Verbindung erfordert das Token (steht in `~/.agent-arena/token`): Browser über das HttpOnly-Cookie
+  `arena_token`, das die Startseite setzt (Origin muss Host und Port der Arena entsprechen); andere Clients per erster
+  Nachricht `hello { token }`. Sonst Abbruch mit Code 4401.
 - **api/http.js** – statische Dateien, `/vendor/*`, `/api/history/*` (Zeitstrahl, Archiv), `/api/health`.
 
 ### Browser

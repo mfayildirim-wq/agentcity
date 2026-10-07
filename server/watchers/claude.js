@@ -12,6 +12,8 @@ const TAIL_BYTES = 1024 * 1024;
 const FULL_LIMIT = 4 * 1024 * 1024;
 const MAX_EVENTS = 40;
 const SNAPSHOT_EVENTS = 14;
+// Subagenten sind spätestens nach STALE + LINGER unsichtbar; so lange bleiben ihre Tracker
+const SUB_KEEP_MS = STALE_MS + DONE_LINGER_MS;
 
 // ---------------------------------------------------------------- Hilfen
 const trunc = (s, n) => {
@@ -20,6 +22,13 @@ const trunc = (s, n) => {
   return s.length > n ? s.slice(0, n - 1) + '…' : s;
 };
 const base = (p) => (p ? path.basename(String(p)) : '');
+
+// kurzer Inhalts-Hash (FNV-1a) für stabile, eindeutige Ereignis-Ids
+function lineHash(str) {
+  let h = 2166136261;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return (h >>> 0).toString(36);
+}
 
 export const mainId = (sessionId) => `w:claude:${sessionId}`;
 export const subId = (agentId) => `w:claude:sub:${agentId}`;
@@ -68,7 +77,6 @@ function newRaw(opts) {
     tokens: { input: 0, output: 0, cache: 0 },
     toolCount: 0,
     events: [],
-    seq: 0,
     pending: new Map(),
   };
 }
@@ -78,11 +86,24 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
   const trackers = new Map();
   /** toolUseId → Agent-Id, um Subagenten ihrem Erzeuger zuzuordnen */
   const toolOwner = new Map();
+  /** neue Ereignisse seit dem letzten takeEvents() (für die Datenbank) */
+  let fresh = [];
+  let loggedApplyError = false;
 
-  function pushEvent(a, ev) {
-    // stabile Ids, damit unveränderte Scans keine Updates auslösen
-    a.events.push({ id: `${a.id}:${++a.seq}`, agentId: a.id, ...ev });
+  function pushEvent(tr, ev) {
+    const a = tr.agent;
+    // Id aus Byte-Offset + Inhalts-Hash der Zeile: stabil über Neustarts (DB dedupliziert),
+    // eindeutig auch nach Neuschreiben der Datei
+    const event = { id: `${a.id}:${tr.lineId}:${tr.lineSeq++}`, agentId: a.id, ...ev };
+    a.events.push(event);
     if (a.events.length > MAX_EVENTS) a.events.shift();
+    fresh.push({ ...event, sessionId: a.sessionId });
+  }
+
+  function takeEvents() {
+    const out = fresh;
+    fresh = [];
+    return out;
   }
 
   function applyLine(tr, d) {
@@ -121,13 +142,14 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
             const category = toolCategory(c.name);
             a.pending.set(c.id, { name: c.name, detail, category });
             toolOwner.set(c.id, a.id);
+            tr.toolIds.add(c.id);
             a.tool = c.name; a.detail = detail; a.category = category;
             a.status = c.name === 'AskUserQuestion' ? 'waiting_user' : 'tool';
             a.toolCount++;
-            pushEvent(a, { t: ts, kind: 'tool', tool: c.name, category, label: detail });
+            pushEvent(tr, { t: ts, kind: 'tool', tool: c.name, category, label: detail });
           } else if (c.type === 'text' && c.text?.trim()) {
             a.lastText = trunc(c.text, 220);
-            pushEvent(a, { t: ts, kind: 'text', label: trunc(c.text, 90) });
+            pushEvent(tr, { t: ts, kind: 'text', label: trunc(c.text, 90) });
           } else if (c.type === 'thinking' && !usedTool && a.pending.size === 0) {
             a.status = 'thinking'; a.tool = null; a.category = null; a.detail = null;
           }
@@ -145,7 +167,7 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
           a.lastPrompt = trunc(c, 220);
           a.pending.clear();
           a.status = 'thinking'; a.tool = null; a.category = null; a.detail = null;
-          pushEvent(a, { t: ts, kind: 'prompt', label: trunc(c, 90) });
+          pushEvent(tr, { t: ts, kind: 'prompt', label: trunc(c, 90) });
           return;
         }
         if (Array.isArray(c)) {
@@ -157,7 +179,7 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
               a.pending.delete(part.tool_use_id);
             } else if (part.type === 'text' && !d.isMeta && part.text && !part.text.startsWith('<') && tr.kind === 'main') {
               a.lastPrompt = trunc(part.text, 220);
-              pushEvent(a, { t: ts, kind: 'prompt', label: trunc(part.text, 90) });
+              pushEvent(tr, { t: ts, kind: 'prompt', label: trunc(part.text, 90) });
               a.status = 'thinking';
             }
           }
@@ -186,12 +208,16 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
     const buf = Buffer.alloc(len);
     if (!len) return buf;
     const fh = await fsp.open(file, 'r');
-    try { await fh.read(buf, 0, len, start); } finally { await fh.close(); }
-    return buf;
+    try {
+      const { bytesRead } = await fh.read(buf, 0, len, start);
+      return bytesRead < len ? buf.subarray(0, bytesRead) : buf;
+    } finally { await fh.close(); }
   }
 
-  function feed(tr, buf, { skipFirst = false } = {}) {
+  // pos = Byte-Position von buf in der Datei
+  function feed(tr, buf, pos, { skipFirst = false } = {}) {
     const data = tr.rest.length ? Buffer.concat([tr.rest, buf]) : buf;
+    const dataPos = pos - tr.rest.length;
     let start = 0;
     if (skipFirst) {
       const nl = data.indexOf(10);
@@ -201,33 +227,41 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
     let idx;
     while ((idx = data.indexOf(10, start)) !== -1) {
       const line = data.subarray(start, idx).toString('utf8');
+      const linePos = dataPos + start;
       start = idx + 1;
       if (!line.trim()) continue;
-      try { applyLine(tr, JSON.parse(line)); } catch { /* unvollständige Zeile */ }
+      let d;
+      try { d = JSON.parse(line); } catch { continue; /* unvollständige Zeile */ }
+      tr.lineId = `${linePos.toString(36)}.${lineHash(line)}`;
+      tr.lineSeq = 0;
+      try { applyLine(tr, d); } catch (err) {
+        if (!loggedApplyError) { loggedApplyError = true; console.error('[watch:claude] Zeile nicht verarbeitet:', err.message); }
+      }
     }
     tr.rest = Buffer.from(data.subarray(start));
   }
 
   async function syncFile(file, st, opts) {
     let tr = trackers.get(file);
-    if (tr && st.size < tr.offset) { trackers.delete(file); tr = null; } // Datei wurde neu geschrieben
+    if (tr && st.size < tr.offset) { dropTracker(file, tr); tr = null; } // Datei wurde neu geschrieben
     if (!tr) {
-      tr = { file, kind: opts.kind, offset: 0, rest: Buffer.alloc(0), agent: newRaw(opts) };
+      tr = { file, kind: opts.kind, offset: 0, rest: Buffer.alloc(0), agent: newRaw(opts), toolIds: new Set(), mtime: st.mtimeMs };
       trackers.set(file, tr);
       if (st.size <= FULL_LIMIT) {
-        feed(tr, await readRange(file, 0, st.size));
+        feed(tr, await readRange(file, 0, st.size), 0);
       } else {
         // Große Session: Anfang (Titel, cwd) und Ende (aktueller Zustand) lesen
-        feed(tr, await readRange(file, 0, HEAD_BYTES));
+        feed(tr, await readRange(file, 0, HEAD_BYTES), 0);
         tr.rest = Buffer.alloc(0);
         tr.agent.pending.clear();
-        feed(tr, await readRange(file, st.size - TAIL_BYTES, st.size), { skipFirst: true });
+        feed(tr, await readRange(file, st.size - TAIL_BYTES, st.size), st.size - TAIL_BYTES, { skipFirst: true });
       }
       tr.offset = st.size;
       return;
     }
+    tr.mtime = st.mtimeMs;
     if (st.size > tr.offset) {
-      feed(tr, await readRange(file, tr.offset, st.size));
+      feed(tr, await readRange(file, tr.offset, st.size), tr.offset);
       tr.offset = st.size;
     }
   }
@@ -235,6 +269,20 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
   async function readMeta(file) {
     try { return JSON.parse(await fsp.readFile(file.replace(/\.jsonl$/, '.meta.json'), 'utf8')); }
     catch { return null; }
+  }
+
+  function dropTracker(file, tr) {
+    trackers.delete(file);
+    for (const id of tr.toolIds) if (toolOwner.get(id) === tr.agent.id) toolOwner.delete(id);
+  }
+
+  // Alte Tracker entfernen, damit Speicher nicht unbegrenzt wächst. Die Grenzen entsprechen
+  // den Kriterien, nach denen scan() Dateien neu aufnimmt (sonst würden sie ständig neu gelesen).
+  function prune(now) {
+    for (const [file, tr] of trackers) {
+      const age = now - Math.max(tr.agent.lastActivity || 0, tr.mtime || 0);
+      if (age > (tr.kind === 'sub' ? SUB_KEEP_MS : windowMs)) dropTracker(file, tr);
+    }
   }
 
   let scanning = false;
@@ -267,12 +315,13 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
             const sp = path.join(sdir, s);
             let sst;
             try { sst = await fsp.stat(sp); } catch { continue; }
-            if (now - sst.mtimeMs > windowMs && !trackers.has(sp)) continue;
+            if (now - sst.mtimeMs > Math.min(windowMs, SUB_KEEP_MS) && !trackers.has(sp)) continue;
             const meta = trackers.has(sp) ? null : await readMeta(sp);
             await syncFile(sp, sst, { kind: 'sub', sessionId, agentId: s.slice(6, -6), projectDir: p.name, meta });
           }
         }
       }
+      prune(now);
     } catch (err) {
       console.error('[watch:claude]', err.message);
     } finally {
@@ -341,5 +390,5 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
     return visible;
   }
 
-  return { id: 'claude', root, scan, agents };
+  return { id: 'claude', root, scan, agents, takeEvents, trackerCount: () => trackers.size, ownerCount: () => toolOwner.size };
 }

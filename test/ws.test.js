@@ -66,12 +66,23 @@ test('HTTP: /api/health und Cookie auf /', async () => {
   assert.deepEqual(JSON.parse(h.body), { ok: true });
   const idx = await get('/');
   assert.equal(idx.status, 200);
-  assert.match(idx.headers['set-cookie'][0], new RegExp(`arena_token=${TOKEN}; SameSite=Strict; Path=/`));
+  assert.match(idx.headers['set-cookie'][0], new RegExp(`arena_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/`));
   const three = await get('/vendor/three/build/three.module.js');
   assert.equal(three.status, 200);
   const xterm = await get('/vendor/xterm/css/xterm.css');
   assert.equal(xterm.status, 200);
-  assert.equal((await get('/../package.json')).status, 404);
+});
+
+test('HTTP: Nullbyte und Traversal', async () => {
+  assert.equal((await get('/a%00b')).status, 400);
+  assert.equal((await get('/vendor/three/a%00b')).status, 400);
+  assert.equal((await get('/%E0%A4%A')).status, 400); // ungültige Kodierung
+  assert.equal((await get('/api/health')).status, 200); // Server lebt noch
+  assert.equal((await get('/..%2fpackage.json')).status, 404);
+  assert.equal((await get('/..%2f..%2fpackage.json')).status, 404);
+  assert.equal((await get('/vendor/three/..%2f..%2fpackage.json')).status, 404);
+  assert.equal((await get('/vendor/three/..%2f..%2f..%2fpackage.json')).status, 404);
+  assert.equal((await get('/css/..%2f..%2fpackage.json')).status, 404);
 });
 
 test('HTTP: fremder Host-Header wird abgewiesen', async () => {
@@ -115,9 +126,28 @@ test('WS mit Cookie → snapshot ohne hello', async () => {
   ws.close();
 });
 
-test('WS mit fremdem Origin wird abgelehnt', async () => {
-  const ws = open({ headers: { Origin: 'http://evil.example' } });
-  ws.on('error', () => {});
-  const code = await ws.closed;
-  assert.notEqual(code, 1000);
+test('WS mit fremdem Origin oder anderem Port wird abgelehnt', async () => {
+  for (const origin of ['http://evil.example', 'http://127.0.0.1:3000', 'http://localhost:3000']) {
+    const ws = open({ headers: { Origin: origin, Cookie: `arena_token=${TOKEN}` } });
+    let opened = false;
+    ws.on('open', () => { opened = true; });
+    ws.on('error', () => {});
+    const code = await ws.closed;
+    assert.equal(opened, false, origin);
+    assert.notEqual(code, 1000);
+  }
+});
+
+test('WS mit eigenem Origin + Cookie → snapshot; ohne Cookie → 4401 sofort', async () => {
+  const origin = `http://127.0.0.1:${port}`;
+  const ok = open({ headers: { Origin: origin, Cookie: `arena_token=${TOKEN}` } });
+  assert.equal((await ok.next((m) => m.type === 'snapshot')).type, 'snapshot');
+  // hello ohne Token liefert bei Cookie-Anmeldung einen frischen Snapshot
+  ok.send(JSON.stringify({ type: 'hello' }));
+  assert.equal((await ok.next((m) => m.type === 'snapshot')).type, 'snapshot');
+  ok.close();
+  const t0 = Date.now();
+  const no = open({ headers: { Origin: origin } });
+  assert.equal(await no.closed, 4401);
+  assert.ok(Date.now() - t0 < 150, 'ohne Wartezeit');
 });

@@ -1,13 +1,8 @@
-// WebSocket-Verbindung zum Server: Anmeldung per Token, Wiederverbindung, Anfrage/Antwort
+// WebSocket-Verbindung zum Server: Anmeldung per Cookie, Wiederverbindung, Anfrage/Antwort
 const BACKOFF = [1000, 2000, 4000, 8000, 10000];
 
-// Token aus dem Cookie; zuletzt gültiges merken, falls das Cookie verloren geht
-let cachedToken = null;
-function readToken() {
-  const m = document.cookie.match(/(?:^|;\s*)arena_token=([0-9a-f]+)/);
-  if (m) cachedToken = m[1];
-  return cachedToken;
-}
+// Anmeldung: Das HttpOnly-Cookie arena_token (gesetzt von der Startseite) geht beim Upgrade mit;
+// der Server schickt danach von selbst einen Snapshot.
 
 // Startseite neu abrufen, damit der Server das Cookie erneut setzt
 async function refreshCookie() {
@@ -28,7 +23,6 @@ export function createConnection({ onMessage, onStatus } = {}) {
     clearTimeout(timer);
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/ws`);
-    ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', token: readToken() }));
     ws.onmessage = (e) => {
       let msg;
       try { msg = JSON.parse(e.data); } catch { return; }
@@ -47,7 +41,6 @@ export function createConnection({ onMessage, onStatus } = {}) {
       status('off', { code: e.code });
       if (stopped) return;
       const delay = BACKOFF[Math.min(attempt++, BACKOFF.length - 1)];
-      if (e.code === 4401) cachedToken = null;
       timer = setTimeout(async () => { if (e.code === 4401) await refreshCookie(); connect(); }, delay);
     };
     ws.onerror = () => {};
@@ -74,8 +67,8 @@ export function createConnection({ onMessage, onStatus } = {}) {
     });
   }
 
-  // Erneut anmelden → Server schickt einen frischen Snapshot
-  function resync() { if (isOpen()) ws.send(JSON.stringify({ type: 'hello', token: readToken() })); }
+  // hello ohne Token → Server schickt einen frischen Snapshot
+  function resync() { if (isOpen()) ws.send(JSON.stringify({ type: 'hello' })); }
 
   function close() { stopped = true; clearTimeout(timer); ws?.close(); }
 

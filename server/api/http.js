@@ -18,6 +18,7 @@ const MIME = {
 
 // Nur lokale Hosts – schützt vor DNS-Rebinding (fremde Seite, die auf 127.0.0.1 zeigt)
 export function isLocalHost(hostHeader) {
+  if (typeof hostHeader !== 'string') return false;
   if (!hostHeader) return false;
   const host = hostHeader.replace(/:\d+$/, '').replace(/^\[|\]$/g, '').toLowerCase();
   return host === '127.0.0.1' || host === 'localhost' || host === '::1';
@@ -32,10 +33,12 @@ export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'pub
   };
 
   function serveFile(res, rootDir, rel, headers = {}, cache = 'no-cache') {
-    let fp;
-    try { fp = path.normalize(path.join(rootDir, decodeURIComponent(rel))); } catch { res.writeHead(400).end(); return; }
+    let decoded;
+    try { decoded = decodeURIComponent(rel); } catch { res.writeHead(400).end('Bad request'); return; }
+    if (decoded.includes('\0')) { res.writeHead(400).end('Bad request'); return; }
+    const fp = path.normalize(path.join(rootDir, decoded));
     if (fp !== rootDir && !fp.startsWith(rootDir + path.sep)) { res.writeHead(404).end('Not found'); return; }
-    fs.stat(fp, (err, st) => {
+    const onStat = (err, st) => {
       if (err || !st.isFile()) { res.writeHead(404).end('Not found'); return; }
       res.writeHead(200, {
         'Content-Type': MIME[path.extname(fp)] || 'application/octet-stream',
@@ -43,8 +46,9 @@ export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'pub
         'X-Content-Type-Options': 'nosniff',
         ...headers,
       });
-      fs.createReadStream(fp).pipe(res);
-    });
+      fs.createReadStream(fp).on('error', () => res.destroy()).pipe(res);
+    };
+    try { fs.stat(fp, onStat); } catch { res.writeHead(400).end('Bad request'); }
   }
 
   const json = (res, status, body) => {
@@ -66,7 +70,7 @@ export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'pub
 
     if (p === '/' || p === '/index.html') {
       serveFile(res, publicDir, 'index.html', {
-        'Set-Cookie': `arena_token=${config.token}; SameSite=Strict; Path=/; Max-Age=31536000`,
+        'Set-Cookie': `arena_token=${config.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`,
       });
       return;
     }

@@ -73,7 +73,7 @@ export class AgentList {
 
   row(a, depth) {
     const st = STATUS[a.status] || STATUS.idle;
-    const color = a.status === 'tool' && a.category ? STATIONS[a.category].color : st.color;
+    const color = a.status === 'tool' && a.category ? (STATIONS[a.category]?.color ?? st.color) : st.color;
     const sub = a.status === 'tool' && a.tool
       ? `${esc(a.tool.replace(/^mcp__/, ''))}${a.detail ? ' · ' + esc(a.detail) : ''}`
       : st.label;

@@ -13,7 +13,13 @@ function rowToTask(r) {
 }
 
 export function createRepo(db) {
-  const q = (sql) => db.prepare(sql);
+  // vorbereitete Statements einmal anlegen und wiederverwenden
+  const stmts = new Map();
+  const q = (sql) => {
+    let st = stmts.get(sql);
+    if (!st) { st = db.prepare(sql); stmts.set(sql, st); }
+    return st;
+  };
 
   function tx(fn) {
     db.exec('BEGIN');

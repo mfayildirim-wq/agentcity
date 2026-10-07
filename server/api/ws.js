@@ -14,18 +14,25 @@ function cookieToken(header = '') {
   return m ? m[1] : null;
 }
 
-// Nur Seiten von 127.0.0.1/localhost dürfen sich verbinden (Origin fehlt bei Nicht-Browsern)
-function originAllowed(origin) {
+// Nur die Arena-Seite selbst darf sich verbinden: Origin (Host + Port) muss dem Host-Header
+// entsprechen. Ohne Origin (Nicht-Browser) entscheidet allein das Token.
+export function originAllowed(origin, hostHeader) {
   if (!origin) return true;
-  try { return isLocalHost(new URL(origin).host); } catch { return false; }
+  try {
+    const u = new URL(origin);
+    return (u.protocol === 'http:' || u.protocol === 'https:') && isLocalHost(u.host)
+      && u.host.toLowerCase() === String(hostHeader).toLowerCase();
+  } catch { return false; }
 }
+
+const MAX_BUFFERED = 4 * 1024 * 1024;
 
 export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, authTimeoutMs = 5_000 }) {
   const wss = new WebSocketServer({
     server,
     path: '/ws',
     maxPayload: 4 * 1024 * 1024,
-    verifyClient: ({ origin, req }) => originAllowed(origin) && isLocalHost(req.headers.host),
+    verifyClient: ({ origin, req }) => isLocalHost(req.headers.host) && originAllowed(origin, req.headers.host),
   });
   // Fehler des HTTP-Servers (z. B. EADDRINUSE) reicht ws weiter – dort behandelt
   wss.on('error', () => {});
@@ -34,7 +41,10 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
   const encode = (msg) => JSON.stringify(msg);
   function broadcast(msg) {
     const data = encode(msg);
-    for (const ws of clients) if (ws.readyState === ws.OPEN) ws.send(data);
+    for (const ws of clients) {
+      // langsame Clients überspringen statt Speicher zu stauen
+      if (ws.readyState === ws.OPEN && ws.bufferedAmount <= MAX_BUFFERED) ws.send(data);
+    }
   }
 
   const snapshot = () => ({
@@ -65,14 +75,18 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
     };
     const authTimer = setTimeout(() => { if (!authed) ws.close(4401, 'Token fehlt'); }, authTimeoutMs);
     if (safeEqual(cookieToken(req.headers.cookie), token)) authenticate();
+    // Browser (mit Origin) melden sich nur per Cookie an – fehlt es, sofort abweisen
+    else if (req.headers.origin) ws.close(4401, 'Cookie fehlt');
 
     ws.on('message', async (raw) => {
       let msg;
       try { msg = JSON.parse(raw); } catch { send({ type: 'error', message: 'Ungültiges JSON' }); return; }
       if (!msg || typeof msg.type !== 'string') { send({ type: 'error', message: 'Nachricht ohne type' }); return; }
 
+      // hello: Anmeldung per Token (Nicht-Browser) bzw. bei Cookie-Anmeldung Bitte um frischen Snapshot
       if (msg.type === 'hello') {
-        if (safeEqual(msg.token, token)) { if (authed) send(snapshot()); else authenticate(); }
+        if (authed) send(snapshot());
+        else if (safeEqual(msg.token, token)) authenticate();
         else if (!authed) ws.close(4401, 'Token ungültig');
         return;
       }

@@ -5,6 +5,7 @@ export function createRecorder({ bus, repo, state, flushMs = 500, debounceMs = 1
   let buffer = [];
   const lastWrite = new Map(); // agentId → Zeitpunkt
   const pending = new Map(); // agentId → Timer
+  const latest = new Map(); // agentId → zuletzt gemeldeter Stand (solange ein Timer läuft)
 
   const sessionOf = (agentId) => state?.get(agentId)?.sessionId ?? null;
 
@@ -25,12 +26,14 @@ export function createRecorder({ bus, repo, state, flushMs = 500, debounceMs = 1
   }
 
   function onAgentUpdate({ agent }) {
+    latest.set(agent.id, agent);
     const since = Date.now() - (lastWrite.get(agent.id) ?? 0);
-    if (since >= debounceMs && !pending.has(agent.id)) { writeAgent(agent); return; }
+    if (since >= debounceMs && !pending.has(agent.id)) { latest.delete(agent.id); writeAgent(agent); return; }
     if (pending.has(agent.id)) return; // Timer schreibt den dann aktuellen Stand
     pending.set(agent.id, setTimeout(() => {
       pending.delete(agent.id);
-      const cur = state?.get(agent.id) ?? agent;
+      const cur = latest.get(agent.id) ?? agent;
+      latest.delete(agent.id);
       writeAgent(cur);
     }, Math.max(0, debounceMs - since)));
   }
@@ -46,16 +49,25 @@ export function createRecorder({ bus, repo, state, flushMs = 500, debounceMs = 1
     try { repo.insertEvents(batch); } catch (err) { console.error('[recorder] Ereignisse', err.message); }
   }
 
+  const onAgentRemove = ({ agentId }) => { if (!pending.has(agentId)) lastWrite.delete(agentId); };
   bus.on('agent.update', onAgentUpdate);
+  bus.on('agent.remove', onAgentRemove);
   bus.on('event', onEvent);
   const timer = setInterval(flush, flushMs);
   timer.unref?.();
 
   function stop() {
     clearInterval(timer);
-    for (const t of pending.values()) clearTimeout(t);
+    // anstehende (entprellte) Agenten noch wegschreiben
+    for (const [id, t] of pending) {
+      clearTimeout(t);
+      const cur = latest.get(id);
+      if (cur) writeAgent(cur);
+    }
     pending.clear();
+    latest.clear();
     bus.off('agent.update', onAgentUpdate);
+    bus.off('agent.remove', onAgentRemove);
     bus.off('event', onEvent);
     flush();
   }
