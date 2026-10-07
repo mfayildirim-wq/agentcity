@@ -96,6 +96,7 @@ store.subscribe((s, changes) => {
   if (changes.has('tools')) {
     setTools(s.tools);
     if (newSession.isOpen) newSession.drawTools();
+    if (settings.isOpen) settings.load(); // Änderung aus einem anderen Fenster
   }
   const agents = store.agentList();
   if (changes.has('agents') || changes.has('tools')) {

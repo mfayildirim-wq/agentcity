@@ -9,8 +9,7 @@ import { createBus } from '../server/core/bus.js';
 import { createState } from '../server/core/state.js';
 import { createAgent } from '../server/core/model.js';
 
-function makeFixture() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-claude-'));
+function makeFixture(root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-claude-'))) {
   const pdir = path.join(root, '-Users-x-myProjects-demo');
   const sid = 'sess-1';
   fs.mkdirSync(path.join(pdir, sid, 'subagents'), { recursive: true });
@@ -83,9 +82,12 @@ test('startWatchers schreibt in den Zustand und überspringt ACP-Sessions', asyn
 });
 
 test('Ereignisse: stabile Ids, neue werden genau einmal gemeldet, eindeutig nach Neuschreiben', async () => {
-  const { root, sid } = makeFixture();
+  // erster Scan (leer) baut nur Zustand auf; danach entstehende Sessions melden ihre Ereignisse
+  const root0 = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-claude-'));
+  const w = createClaudeWatcher({ root: root0, windowMs: 60 * 60_000 });
+  await w.scan();
+  const { root, sid } = makeFixture(root0);
   const file = path.join(root, '-Users-x-myProjects-demo', `${sid}.jsonl`);
-  const w = createClaudeWatcher({ root, windowMs: 60 * 60_000 });
   await w.scan();
   const first = w.takeEvents();
   assert.equal(first.length, 4); // prompt, 2 tools (Haupt), 1 tool (Sub)
@@ -95,7 +97,8 @@ test('Ereignisse: stabile Ids, neue werden genau einmal gemeldet, eindeutig nach
   // gleicher Inhalt in neuem Watcher (z. B. Server-Neustart) → gleiche Ids
   const w2 = createClaudeWatcher({ root, windowMs: 60 * 60_000 });
   await w2.scan();
-  assert.deepEqual(w2.takeEvents().map((e) => e.id).sort(), first.map((e) => e.id).sort());
+  assert.equal(w2.takeEvents().length, 0, 'erster Scan meldet keine historischen Ereignisse');
+  assert.deepEqual(w2.agents().flatMap((a) => a.events.map((e) => e.id)).sort(), first.map((e) => e.id).sort());
   // Datei kürzer neu geschrieben → neue Ids, keine Kollision mit den alten
   const ts = new Date().toISOString();
   fs.writeFileSync(file, JSON.stringify({ type: 'user', timestamp: ts, message: { role: 'user', content: 'Neu' } }) + '\n');
@@ -141,9 +144,13 @@ test('startWatchers: Ereignisse auf den Bus, Dedup per acpSessionId, Fehler been
     const ws = startWatchers({ state, bus, config: {}, watchers: [broken, throwsLater, claude], autoStart: false });
     await ws.tick();
     assert.equal(state.all().length, 2);
-    assert.equal(events.length, 4);
+    assert.equal(events.length, 0); // erster Scan: nur Zustand
+    fs.appendFileSync(path.join(root, '-Users-x-myProjects-demo', `${sid}.jsonl`),
+      JSON.stringify({ type: 'user', timestamp: new Date().toISOString(), message: { role: 'user', content: 'Weiter' } }) + '\n');
     await ws.tick();
-    assert.equal(events.length, 4); // nichts doppelt
+    assert.equal(events.length, 1);
+    await ws.tick();
+    assert.equal(events.length, 1); // nichts doppelt
     // ACP-Agent mit anderer sessionId, aber acpSessionId = Claude-Session
     state.upsert(createAgent({ id: 'a:2', toolId: 'claude', project: 'demo', sessionId: 'db-1', acpSessionId: sid, source: 'acp' }));
     await ws.tick();

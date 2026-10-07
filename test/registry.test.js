@@ -113,6 +113,57 @@ test('test() mit Fake-Agent ok, mit fehlendem Befehl Fehler, mit hängendem Agen
   assert.match(hang.error, /keine Antwort/);
 });
 
+test('test(): hängender Prozess wird nach dem Zeitlimit beendet', async () => {
+  let client;
+  const { AcpClient } = await import('../server/acp/client.js');
+  const reg = createRegistry({
+    dataDir: tmp(), arenaDir: '/x/arena', testTimeoutMs: 800,
+    clientFactory: (opts) => (client = new AcpClient(opts)),
+  });
+  const res = await reg.test({ id: 'hang', name: 'H', command: 'node', args: [FAKE], env: { FAKE_HANG_INIT: '1' }, color: '#888888' });
+  assert.equal(res.ok, false);
+  assert.ok(client.exited, 'Prozess ist beendet');
+  assert.throws(() => process.kill(client.proc.pid, 0), /ESRCH/);
+});
+
+test('Standard-Tool umschalten speichert nur Abweichungen, ohne absolute Arena-Pfade', () => {
+  const dataDir = tmp();
+  const arenaDir = '/x/arena';
+  const file = path.join(dataDir, 'agents.json');
+  const reg = createRegistry({ dataDir, arenaDir });
+  const read = () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : []);
+  reg.save({ id: 'claude', disabled: true });
+  assert.deepEqual(read(), [{ id: 'claude', disabled: true }]);
+  assert.equal(reg.get('claude'), null);
+  reg.save({ id: 'claude', disabled: false });
+  assert.deepEqual(read(), [], 'ohne Abweichung kein Eintrag');
+  assert.equal(reg.list().find((t) => t.id === 'claude').modified, false);
+  // vollständiger Eintrag aus dem Formular (aufgelöste Pfade) → nur echte Abweichung, Pfade als <arena>
+  const codex = reg.list().find((t) => t.id === 'codex');
+  reg.save({ ...codex, args: [...codex.args, '-c', 'model="gpt-5.5"'] });
+  assert.deepEqual(read(), [{ id: 'codex', args: ['<arena>/node_modules/@zed-industries/codex-acp/bin/codex-acp.js', '-c', 'model="gpt-5.5"'] }]);
+  const again = reg.list().find((t) => t.id === 'codex');
+  assert.equal(again.modified, true);
+  assert.equal(again.args[0], '/x/arena/node_modules/@zed-industries/codex-acp/bin/codex-acp.js');
+  // Umschalten behält die Abweichung
+  reg.save({ id: 'codex', disabled: true });
+  assert.deepEqual(read()[0].disabled, true);
+  assert.equal(read()[0].args.length, 3);
+  // eigenes Tool mit Arena-Pfad
+  reg.save({ id: 'eigen', name: 'Eigen', command: 'node', args: ['/x/arena/tool.js'], color: '#123456' }, { isNew: true });
+  assert.equal(read().find((x) => x.id === 'eigen').args[0], '<arena>/tool.js');
+  assert.throws(() => reg.save({ id: 'eigen', name: 'E', command: 'node', args: [], color: '#123456' }, { isNew: true }), /bereits vergeben/);
+  assert.throws(() => reg.save({ id: 'codex', name: 'C', command: 'node', args: [], color: '#123456' }, { isNew: true }), /bereits vergeben/);
+  assert.ok(!fs.readdirSync(dataDir).some((f) => f.endsWith('.tmp')), 'keine tmp-Datei übrig');
+});
+
+test('findCommand löst relative Pfade auf', async () => {
+  const { findCommand } = await import('../server/agents/registry.js');
+  const rel = path.relative(process.cwd(), '/bin/sh');
+  assert.equal(findCommand(rel), '/bin/sh');
+  assert.equal(findCommand('./gibt-es-nicht'), null);
+});
+
 test('Feste Liste (tools) ohne Nutzer-Datei bleibt möglich', () => {
   const reg = createRegistry({ tools: [{ id: 'fake', name: 'Fake', command: 'node', args: [FAKE], color: '#888888' }] });
   assert.deepEqual(reg.list().map((t) => t.id), ['fake']);

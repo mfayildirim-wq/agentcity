@@ -14,7 +14,8 @@ export default {
   },
 
   'settings.agents.save'(ctx, msg) {
-    const agents = need(ctx).save(msg.agent);
+    // isNew: „Neu“-Formular – vorhandene id ablehnen
+    const agents = need(ctx).save(msg.agent, { isNew: !!msg.isNew });
     announce(ctx);
     return { agents };
   },

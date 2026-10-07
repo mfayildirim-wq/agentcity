@@ -2,13 +2,15 @@
 // Tabellen (Stand 1.18): session(id, parent_id, directory, title, agent, model, time_created, time_updated,
 // time_archived, tokens_*), message(id, session_id, time_created, data JSON {role, finish, time.completed, modelID}),
 // part(id, message_id, session_id, time_created, data JSON {type: text|reasoning|tool|step-*, tool, state{status,input}})
-import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAgent } from '../core/model.js';
-import { trunc, base, agedStatus, guessCategory, onceLogger, SNAPSHOT_EVENTS } from './common.js';
+import {
+  trunc, base, agedStatus, guessCategory, onceLogger, openReadOnly, dbPrint, errKind, SNAPSHOT_EVENTS,
+} from './common.js';
 
 const REFRESH_MS = 15_000; // spätestens so oft neu lesen, auch ohne Dateiänderung
+const BACKOFF_MS = 30_000; // nach einem Lesefehler
 const PARTS = 40;
 
 export const opencodeId = (sessionId) => `w:opencode:${sessionId}`;
@@ -35,14 +37,15 @@ export function createOpencodeWatcher({ dbPath, windowMs = 90 * 60_000 }) {
   let lastPrint = '';
   let lastRead = 0;
   let cache = []; // Rohdaten je Session aus dem letzten Lesen
+  let backoffUntil = 0;
+  let initial = true; // erster Scan: nur Zustand aufbauen, keine historischen Ereignisse melden
+  const counts = new Map(); // Session-Id → { updated, n } (Werkzeugzahl nur bei Änderung neu zählen)
   const seenEvents = new Set();
   let fresh = [];
   const log = onceLogger('opencode');
 
   function open() {
-    if (db) return;
-    db = new DatabaseSync(dbPath, { readOnly: true });
-    db.exec('PRAGMA busy_timeout = 200');
+    db = openReadOnly(DatabaseSync, dbPath);
     stmts = {
       sessions: db.prepare(`SELECT id, parent_id, directory, title, agent, model, time_created, time_updated,
           tokens_input, tokens_output, tokens_cache_read FROM session
@@ -57,8 +60,8 @@ export function createOpencodeWatcher({ dbPath, windowMs = 90 * 60_000 }) {
           json_extract(p.data, '$.state.input.command') AS command, json_extract(p.data, '$.state.input.description') AS description,
           json_extract(p.data, '$.state.input.filePath') AS filePath, json_extract(p.data, '$.state.input.pattern') AS pattern,
           json_extract(p.data, '$.state.input.query') AS query, json_extract(p.data, '$.state.input.url') AS url
-        FROM part p JOIN message m ON m.id = p.message_id
-        WHERE p.session_id = ? ORDER BY p.id DESC LIMIT ${PARTS}`),
+        FROM (SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT 8) m
+        JOIN part p ON p.message_id = m.id ORDER BY p.id DESC LIMIT ${PARTS}`),
       toolCount: db.prepare(`SELECT count(*) AS n FROM part WHERE session_id = ? AND json_extract(data, '$.type') = 'tool'`),
     };
   }
@@ -69,17 +72,20 @@ export function createOpencodeWatcher({ dbPath, windowMs = 90 * 60_000 }) {
     stmts = null;
   }
 
-  // Dateiänderung (DB oder WAL) als Auslöser zum Neulesen
-  function print() {
-    const st = (p) => { try { const s = fs.statSync(p); return `${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
-    return `${st(dbPath)}|${st(`${dbPath}-wal`)}`;
-  }
-
   const detailOf = (r) => {
     if (r.command) return trunc(r.description || r.command, 80);
     if (r.filePath) return base(r.filePath);
     return trunc(r.pattern || r.query || r.url || r.description || '', 60) || null;
   };
+
+  // Zählen über alle Teile ist teuer: nur wenn sich die Session geändert hat
+  function toolCount(s) {
+    const c = counts.get(s.id);
+    if (c && c.updated === s.time_updated) return c.n;
+    const n = stmts.toolCount.get(s.id)?.n ?? 0;
+    counts.set(s.id, { updated: s.time_updated, n });
+    return n;
+  }
 
   function readSession(s) {
     const msg = stmts.lastMessage.get(s.id) ?? {};
@@ -111,13 +117,15 @@ export function createOpencodeWatcher({ dbPath, windowMs = 90 * 60_000 }) {
     }
     return {
       ...s, status, running: status === 'tool' ? running : null, lastText, lastPrompt, events,
-      model: msg.model ?? modelName(s.model), toolCount: stmts.toolCount.get(s.id)?.n ?? 0,
+      model: msg.model ?? modelName(s.model), toolCount: toolCount(s),
     };
   }
 
+  // Verbindung je Scan öffnen und schließen (hält keine Sperren/Begleitdateien offen)
   async function scan() {
     const now = Date.now();
-    const p = print();
+    if (now < backoffUntil) return;
+    const p = dbPrint(dbPath);
     if (p === lastPrint && now - lastRead < REFRESH_MS) return;
     try {
       open();
@@ -125,17 +133,23 @@ export function createOpencodeWatcher({ dbPath, windowMs = 90 * 60_000 }) {
       cache = rows.map(readSession);
       lastPrint = p;
       lastRead = now;
+      const ids = new Set(rows.map((r) => r.id));
+      for (const id of counts.keys()) if (!ids.has(id)) counts.delete(id);
       for (const s of cache) {
         for (const e of s.events) {
           if (seenEvents.has(e.id)) continue;
           seenEvents.add(e.id);
-          fresh.push({ ...e, agentId: s.parent_id ? opencodeSubId(s.id) : opencodeId(s.id), sessionId: s.id });
+          if (!initial) fresh.push({ ...e, agentId: s.parent_id ? opencodeSubId(s.id) : opencodeId(s.id), sessionId: s.id });
         }
       }
+      initial = false;
       if (seenEvents.size > 20_000) seenEvents.clear();
     } catch (err) {
-      // gesperrt, Schema geändert o. Ä.: still überspringen, Verbindung neu aufbauen
-      log('Lesen', err);
+      // gesperrt, Schema geändert o. Ä.: still überspringen, später erneut versuchen
+      log(`Lesen (${errKind(err)})`, err);
+      cache = [];
+      backoffUntil = now + BACKOFF_MS;
+    } finally {
       close();
     }
   }

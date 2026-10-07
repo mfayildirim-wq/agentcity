@@ -286,6 +286,7 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
   }
 
   let scanning = false;
+  let firstScan = true; // erster Scan baut nur den Zustand auf – historische Ereignisse nicht melden
   async function scan() {
     if (scanning) return;
     scanning = true;
@@ -326,6 +327,7 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
       console.error('[watch:claude]', err.message);
     } finally {
       scanning = false;
+      if (firstScan) { firstScan = false; fresh = []; }
     }
   }
 

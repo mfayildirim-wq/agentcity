@@ -5,15 +5,21 @@ import { ICON, esc } from './common.js';
 const STYLE_NAMES = { gem: 'Raute', cap: 'Mütze', hoodie: 'Kapuze', scarf: 'Schal', visor: 'Visier' };
 const TEST_TIMEOUT = 25_000;
 
-// Argumente als eine Zeile: Leerzeichen trennen, "…" bzw. '…' fassen zusammen
+// Argumente als eine Zeile: Leerzeichen trennen; "…" mit JSON-Escapes (\" \\), '…' wörtlich
 export function parseArgs(line) {
   const out = [];
-  const re = /"([^"]*)"|'([^']*)'|(\S+)/g;
+  const re = /"((?:[^"\\]|\\.)*)"|'([^']*)'|(\S+)/g;
   let m;
-  while ((m = re.exec(String(line ?? '')))) out.push(m[1] ?? m[2] ?? m[3]);
+  while ((m = re.exec(String(line ?? '')))) {
+    if (m[1] !== undefined) {
+      try { out.push(JSON.parse(`"${m[1]}"`)); } catch { out.push(m[1]); }
+    } else out.push(m[2] ?? m[3]);
+  }
   return out;
 }
-export const formatArgs = (args = []) => args.map((a) => (/[\s"']/.test(a) || a === '' ? (a.includes('"') ? `'${a}'` : `"${a}"`) : a)).join(' ');
+// Rundlauf mit parseArgs: einfache Argumente bleiben roh, alles mit Leerzeichen/Anführungszeichen als JSON-String
+export const formatArgs = (args = []) => args.map((a) => (a === '' || /[\s"'\\]/.test(a) ? JSON.stringify(a) : a)).join(' ');
+const safeColor = (c) => (/^#[0-9a-f]{6}$/i.test(c ?? '') ? c : '#8a94a6');
 
 // KEY=VAL je Zeile; leere Zeilen und #-Kommentare ignorieren
 export function parseEnv(text) {
@@ -110,7 +116,8 @@ export class SettingsPanel {
       if (kind === 'cancel') { this.editing = null; this.draw(); return; }
       if (kind === 'toggle') {
         const a = this.find(id);
-        await this.save({ ...a, disabled: !a.disabled }, false);
+        // Standard-Tool: nur den Schalter senden (Server speichert nur Abweichungen)
+        await this.save(a.builtin ? { id: a.id, disabled: !a.disabled } : { ...a, disabled: !a.disabled }, false);
         return;
       }
       if (kind === 'test') {
@@ -127,7 +134,7 @@ export class SettingsPanel {
         this.draw();
         return;
       }
-      if (kind === 'save') { await this.save(this.readForm(), true); return; }
+      if (kind === 'save') { await this.save(this.readForm(), true, this.editing === ''); return; }
       if (kind === 'delete') {
         const a = this.find(id);
         if (this.confirmDelete !== id) {
@@ -148,8 +155,8 @@ export class SettingsPanel {
     }
   }
 
-  async save(agent, closeForm) {
-    const res = await this.request('settings.agents.save', { agent });
+  async save(agent, closeForm, isNew = false) {
+    const res = await this.request('settings.agents.save', { agent, isNew });
     this.agents = res.agents ?? this.agents;
     if (closeForm) this.editing = null;
     this.draw();
@@ -164,12 +171,17 @@ export class SettingsPanel {
     const f = this.el.querySelector('.st-form');
     const kept = f && f.dataset.id === (this.editing ?? '\0')
       ? [...f.querySelectorAll('[name]')].map((x) => [x.name, x.value]) : null;
-    const focused = document.activeElement?.closest?.('.st-form') ? document.activeElement.name : null;
+    const act = document.activeElement;
+    const focused = act?.closest?.('.st-form') ? { name: act.name, start: act.selectionStart, end: act.selectionEnd } : null;
     this.render();
     if (kept) {
       const nf = this.el.querySelector('.st-form');
       for (const [n, val] of kept) { const x = nf?.querySelector(`[name="${n}"]`); if (x) x.value = val; }
-      if (focused) nf?.querySelector(`[name="${focused}"]`)?.focus();
+      const x = focused && nf?.querySelector(`[name="${focused.name}"]`);
+      if (x) {
+        x.focus();
+        try { if (focused.start != null) x.setSelectionRange(focused.start, focused.end); } catch { /* Feld ohne Auswahl */ }
+      }
     }
   }
 
@@ -196,7 +208,7 @@ export class SettingsPanel {
     const cmd = [a.command, formatArgs(a.args)].filter(Boolean).join(' ');
     return `<div class="st-item ${a.disabled ? 'disabled' : ''} ${open ? 'open' : ''}" data-id="${esc(a.id)}">
       <div class="st-row" role="row">
-        <span class="st-dot" style="--c:${esc(a.color || '#8a94a6')}"></span>
+        <span class="st-dot" style="--c:${safeColor(a.color)}"></span>
         <span class="st-name" title="${esc(a.id)}">${esc(a.name || a.id)}${a.invalid ? `<em class="bad" title="${esc(a.invalid)}">ungültig</em>` : a.modified ? '<em>geändert</em>' : !a.builtin ? '<em>eigen</em>' : ''}</span>
         <code class="st-cmd" title="${esc(cmd)}">‎${esc(cmd)}‎</code>
         <span class="st-inst ${a.installed ? 'yes' : 'no'}" title="${a.installed ? 'installiert' : 'Befehl nicht gefunden'}">${svgIcon(a.installed ? ICON.check : ICON.x)}</span>
@@ -235,7 +247,7 @@ export class SettingsPanel {
       <label class="wide"><span>Befehl</span><input name="command" class="mono" value="${esc(v.command)}" placeholder="node oder mein-tool" spellcheck="false" /></label>
       <label class="wide"><span>Argumente</span><input name="args" class="mono" value="${esc(formatArgs(v.args))}" placeholder="acp --flag &quot;mit Leerzeichen&quot;" spellcheck="false" /></label>
       <label class="wide"><span>Umgebung</span><textarea name="env" class="mono" rows="2" placeholder="KEY=VAL je Zeile" spellcheck="false">${esc(formatEnv(v.env))}</textarea></label>
-      <label><span>Farbe</span><span class="st-color"><input type="color" name="colorPick" value="${esc(/^#[0-9a-f]{6}$/i.test(v.color) ? v.color : '#8a94a6')}" /><input name="color" class="mono" value="${esc(v.color)}" maxlength="7" spellcheck="false" /></span></label>
+      <label><span>Farbe</span><span class="st-color"><input type="color" name="colorPick" value="${safeColor(v.color)}" /><input name="color" class="mono" value="${esc(v.color)}" maxlength="7" spellcheck="false" /></span></label>
       <label><span>Figur</span><select name="avatarStyle">${AVATAR_STYLES.map((s) => `<option value="${s}" ${s === (v.avatarStyle ?? 'gem') ? 'selected' : ''}>${STYLE_NAMES[s]}</option>`).join('')}</select></label>
       <div class="st-form-act wide">
         <button class="btn sm ghost" data-act="test" title="Mit diesen Werten testen">${svgIcon(ICON.test)}Testen</button>

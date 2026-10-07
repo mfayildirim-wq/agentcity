@@ -250,6 +250,7 @@ export function createCodexWatcher({ root, windowMs = 90 * 60_000 }) {
   }
 
   let scanning = false;
+  let firstScan = true; // erster Scan baut nur den Zustand auf – historische Ereignisse nicht melden
   async function scan() {
     if (scanning) return;
     scanning = true;
@@ -278,6 +279,7 @@ export function createCodexWatcher({ root, windowMs = 90 * 60_000 }) {
       }
     } finally {
       scanning = false;
+      if (firstScan) { firstScan = false; fresh = []; }
     }
   }
 

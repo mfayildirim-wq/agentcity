@@ -16,6 +16,18 @@ export const TEST_TIMEOUT_MS = 10_000;
 const FIELDS = ['id', 'name', 'command', 'args', 'env', 'color', 'avatarStyle', 'disabled'];
 
 const subst = (s, arenaDir) => (typeof s === 'string' ? s.replaceAll('<arena>', arenaDir) : s);
+const unsubst = (s, arenaDir) => (typeof s === 'string' && arenaDir ? s.replaceAll(arenaDir, '<arena>') : s);
+
+// Arena-Pfad vor dem Speichern wieder durch <arena> ersetzen (Datei bleibt verschiebbar)
+function unsubstAll(t, arenaDir) {
+  const out = { ...t };
+  if ('command' in out) out.command = unsubst(out.command, arenaDir);
+  if (Array.isArray(out.args)) out.args = out.args.map((a) => unsubst(a, arenaDir));
+  if (out.env && typeof out.env === 'object') out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, unsubst(v, arenaDir)]));
+  return out;
+}
+const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+const DIFF_FIELDS = ['name', 'command', 'args', 'env', 'color', 'avatarStyle'];
 
 function substAll(t, arenaDir) {
   const out = { ...t };
@@ -77,7 +89,7 @@ function executable(file) {
 
 export function findCommand(command, envPath = process.env.PATH ?? '') {
   if (!command) return null;
-  if (command.includes('/')) return executable(command) ? command : null;
+  if (command.includes('/')) { const abs = path.resolve(command); return executable(abs) ? abs : null; }
   const dirs = new Set([...envPath.split(path.delimiter), '/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local', 'bin')]);
   for (const d of dirs) {
     if (!d) continue;
@@ -136,9 +148,13 @@ export function createRegistry({
     if (!file) throw new Error('Keine Nutzer-Datei konfiguriert');
     fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
     const tmp = `${file}.${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(list, null, 2) + '\n', { mode: 0o600 });
-    fs.renameSync(tmp, file);
-    fs.chmodSync(file, 0o600);
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(list, null, 2) + '\n', { mode: 0o600 });
+      fs.renameSync(tmp, file);
+      fs.chmodSync(file, 0o600);
+    } finally {
+      try { fs.unlinkSync(tmp); } catch { /* bereits umbenannt */ }
+    }
     user = list;
     try { userMtime = fs.statSync(file).mtimeMs; } catch { userMtime = -1; }
   }
@@ -149,7 +165,7 @@ export function createRegistry({
     const out = [];
     for (const d of defaults) {
       const o = u.get(d.id);
-      const e = { ...d, ...(o ?? {}), id: d.id, builtin: true, modified: !!o && Object.keys(o).some((k) => k !== 'id' && k !== 'disabled') };
+      const e = { ...d, ...(o ?? {}), id: d.id, builtin: true, modified: !!o && DIFF_FIELDS.some((k) => k in o && !same(o[k], d[k] ?? (k === 'env' ? {} : k === 'avatarStyle' ? null : undefined))) };
       out.push(e);
     }
     for (const [id, o] of u) if (!defaultIds.has(id)) out.push({ ...o, builtin: false, modified: false });
@@ -173,11 +189,33 @@ export function createRegistry({
 
   const publicList = () => list().map(({ id, name, color, avatarStyle, installed }) => ({ id, name, color, avatarStyle, installed }));
 
-  function save(agent) {
-    validateAgent(agent);
-    const entry = clean(agent);
-    const rest = loadUser().filter((x) => x.id !== entry.id);
-    writeUser([...rest, entry]);
+  // Standard-Tools: nur Abweichungen vom Default speichern (auch Teil-Einträge wie { id, disabled });
+  // eigene Tools: vollständiger Eintrag. isNew lehnt vorhandene ids ab.
+  function save(agent, { isNew = false } = {}) {
+    if (!agent || typeof agent.id !== 'string') throw new Error('id fehlt');
+    const cur = loadUser();
+    const def = defaults.find((d) => d.id === agent.id);
+    if (isNew && (def || cur.some((x) => x.id === agent.id))) throw new Error(`id bereits vergeben: ${agent.id}`);
+    let entry;
+    if (def) {
+      const prev = cur.find((x) => x.id === agent.id) ?? {};
+      const full = { ...def, ...substAll(prev, arenaDir), ...agent, id: def.id };
+      validateAgent(full);
+      const c = clean(full);
+      entry = { id: def.id };
+      for (const k of DIFF_FIELDS) {
+        const dv = def[k] ?? (k === 'env' ? {} : k === 'avatarStyle' ? null : undefined);
+        if (!same(c[k], dv)) entry[k] = c[k];
+      }
+      if (c.disabled) entry.disabled = true;
+      entry = unsubstAll(entry, arenaDir);
+    } else {
+      validateAgent(agent);
+      entry = unsubstAll(clean(agent), arenaDir);
+    }
+    const rest = cur.filter((x) => x.id !== entry.id);
+    const keep = Object.keys(entry).length > 1 || !def; // Standard ohne Abweichung → kein Eintrag
+    writeUser(keep ? [...rest, entry] : rest);
     return list({ all: true });
   }
 
@@ -210,7 +248,9 @@ export function createRegistry({
       const tail = client.stderrTail?.(6);
       return { ok: false, error: rpcErrorMessage(err), stderrTail: tail || null };
     } finally {
-      await Promise.race([client.stop(), new Promise((r) => setTimeout(r, 3000))]);
+      let t;
+      await Promise.race([client.stop(), new Promise((r) => { t = setTimeout(r, 3000); t.unref?.(); })]);
+      clearTimeout(t);
     }
   }
 

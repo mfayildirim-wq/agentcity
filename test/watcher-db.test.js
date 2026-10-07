@@ -35,7 +35,8 @@ function opencodeDb() {
 }
 
 test('OpenCode-Watcher: Session, laufendes Werkzeug, Subagent', async () => {
-  const w = createOpencodeWatcher({ dbPath: opencodeDb(), windowMs: 60 * 60_000 });
+  const dbPath = opencodeDb();
+  const w = createOpencodeWatcher({ dbPath, windowMs: 60 * 60_000 });
   await w.scan();
   const agents = w.agents();
   assert.deepEqual(agents.map((a) => a.id).sort(), ['w:opencode:ses_1', 'w:opencode:sub:ses_2']);
@@ -57,10 +58,23 @@ test('OpenCode-Watcher: Session, laufendes Werkzeug, Subagent', async () => {
   assert.equal(sub.parentId, main.id);
   assert.equal(sub.status, 'done');
   assert.equal(sub.agentType, 'general');
-  assert.equal(w.takeEvents().length, 3);
+  assert.equal(w.takeEvents().length, 0, 'erster Scan meldet keine historischen Ereignisse');
+  // keine Begleitdateien neben der fremden Datenbank
+  assert.ok(!fs.existsSync(`${dbPath}-wal`) && !fs.existsSync(`${dbPath}-shm`));
+  // neue Nachricht → genau ein neues Ereignis
+  const db = new DatabaseSync(dbPath);
+  const now = Date.now();
+  db.prepare('INSERT INTO message VALUES (?,?,?,?,?)').run('msg_9', 'ses_1', now, now, JSON.stringify({ role: 'user' }));
+  db.prepare('INSERT INTO part VALUES (?,?,?,?,?,?)').run('prt_9', 'msg_9', 'ses_1', now, now, JSON.stringify({ type: 'text', text: 'Und jetzt?' }));
+  db.prepare('UPDATE session SET time_updated = ? WHERE id = ?').run(now, 'ses_1');
+  db.close();
+  await w.scan();
+  const evs = w.takeEvents();
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].label, 'Und jetzt?');
+  assert.equal(w.agents().find((a) => a.kind === 'main').status, 'thinking');
   await w.scan(); // unverändert → kein Neulesen, keine doppelten Ereignisse
   assert.equal(w.takeEvents().length, 0);
-  w.close();
 });
 
 test('OpenCode-Watcher: fehlende/kaputte Datenbank wird still übersprungen', async () => {
@@ -101,7 +115,8 @@ function hermesDb() {
 }
 
 test('Hermes-Watcher: Session mit cwd aus dem System-Prompt, wartet nach Antwort', async () => {
-  const w = createHermesWatcher({ dbPath: hermesDb(), windowMs: 60 * 60_000 });
+  const dbPath = hermesDb();
+  const w = createHermesWatcher({ dbPath, windowMs: 60 * 60_000 });
   await w.scan();
   const [a, ...rest] = w.agents();
   assert.equal(rest.length, 0);
@@ -116,6 +131,49 @@ test('Hermes-Watcher: Session mit cwd aus dem System-Prompt, wartet nach Antwort
   assert.deepEqual(a.events.map((e) => e.kind), ['prompt', 'tool', 'text']);
   assert.equal(a.events[1].category, 'terminal');
   assert.equal(a.events[1].label, 'ls -la');
-  assert.equal(w.takeEvents().length, 3);
+  assert.equal(w.takeEvents().length, 0);
+  assert.ok(!fs.existsSync(`${dbPath}-wal`) && !fs.existsSync(`${dbPath}-shm`));
   w.close();
+});
+
+function quietLog(fn) {
+  const orig = console.error;
+  const lines = [];
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  return Promise.resolve().then(fn).finally(() => { console.error = orig; }).then(() => lines);
+}
+
+test('OpenCode-Watcher: abweichendes Schema → leere Liste, ein Log, Backoff', async () => {
+  const file = path.join(tmp(), 'opencode.db');
+  const db = new DatabaseSync(file);
+  db.exec('CREATE TABLE session (id TEXT PRIMARY KEY, title TEXT)');
+  db.close();
+  const w = createOpencodeWatcher({ dbPath: file, windowMs: 60_000 });
+  const lines = await quietLog(async () => { await w.scan(); await w.scan(); });
+  assert.deepEqual(w.agents(), []);
+  assert.equal(lines.length, 1);
+  assert.match(lines[0], /sqlite/);
+});
+
+test('Hermes-Watcher: gesperrte Datenbank → still übersprungen, Zustand geleert', async () => {
+  const dbPath = hermesDb();
+  const w = createHermesWatcher({ dbPath, windowMs: 60 * 60_000 });
+  await w.scan();
+  assert.equal(w.agents().length, 1);
+  // Schreiber hält eine exklusive Sperre (Rollback-Journal liegt daneben)
+  const writer = new DatabaseSync(dbPath);
+  writer.exec('BEGIN EXCLUSIVE');
+  writer.exec("INSERT INTO messages (session_id, role, content, timestamp) VALUES ('20261007_1', 'user', 'x', 1)");
+  try {
+    const realNow = Date.now;
+    Date.now = () => realNow() + 20_000; // Neulesen erzwingen
+    let lines;
+    try { lines = await quietLog(() => w.scan()); } finally { Date.now = realNow; }
+    assert.equal(lines.length, 1);
+    assert.match(lines[0], /BUSY|locked/i);
+    assert.deepEqual(w.agents(), []);
+  } finally {
+    writer.exec('ROLLBACK');
+    writer.close();
+  }
 });

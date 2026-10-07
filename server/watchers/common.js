@@ -1,6 +1,8 @@
 // Gemeinsame Hilfen der Watcher für Codex, OpenCode und Hermes.
+import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 export const IDLE_MS = 2 * 60_000;
 export const STALE_MS = 15 * 60_000;
@@ -62,3 +64,29 @@ export function onceLogger(tag) {
     console.error(`[watch:${tag}] ${key}: ${err?.message ?? err}`);
   };
 }
+
+// Fremde SQLite-Datenbank nur lesend öffnen. Ohne vorhandene -wal/-shm/-journal (Tool läuft nicht) als
+// immutable-URI, damit keine Begleitdateien entstehen, die das Tool später am Aufräumen hindern.
+export function openReadOnly(DatabaseSync, dbPath) {
+  // -journal: gerade laufende Schreib-Transaktion (Rollback-Modus) → normal mit Sperren lesen
+  const side = ['-wal', '-shm', '-journal'].some((x) => fs.existsSync(`${dbPath}${x}`));
+  let db;
+  if (side) db = new DatabaseSync(dbPath, { readOnly: true });
+  else {
+    const u = pathToFileURL(dbPath);
+    u.searchParams.set('mode', 'ro');
+    u.searchParams.set('immutable', '1');
+    db = new DatabaseSync(u, { readOnly: true });
+  }
+  db.exec('PRAGMA busy_timeout = 200');
+  return db;
+}
+
+// Fingerabdruck einer Datenbank samt WAL (Inode, Größe, Änderungszeit) als Auslöser zum Neulesen
+export function dbPrint(dbPath) {
+  const st = (p) => { try { const s = fs.statSync(p); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
+  return `${st(dbPath)}|${st(`${dbPath}-wal`)}`;
+}
+
+// Fehlerart für Log-Schlüssel (SQLITE_BUSY, SQLITE_ERROR, ENOENT …)
+export const errKind = (err) => err?.errcode != null ? `sqlite:${err.errstr ?? err.errcode}` : err?.code ?? err?.name ?? 'Fehler';

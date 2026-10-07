@@ -2,13 +2,15 @@
 // Tabellen (Stand 0.14): sessions(id, source, model, parent_session_id, started_at, ended_at, title, system_prompt,
 // tool_call_count, input_tokens, output_tokens, cache_read_tokens, …), messages(id, session_id, role user|assistant|tool,
 // content, tool_calls JSON [{ function: { name, arguments } }], finish_reason, timestamp). Zeiten in Sekunden.
-import fs from 'node:fs';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createAgent } from '../core/model.js';
-import { trunc, base, agedStatus, guessCategory, onceLogger, SNAPSHOT_EVENTS, IDLE_MS } from './common.js';
+import {
+  trunc, base, agedStatus, guessCategory, onceLogger, openReadOnly, dbPrint, errKind, SNAPSHOT_EVENTS, IDLE_MS,
+} from './common.js';
 
 const REFRESH_MS = 15_000;
+const BACKOFF_MS = 30_000;
 const MESSAGES = 30;
 
 export const hermesId = (sessionId) => `w:hermes:${sessionId}`;
@@ -40,20 +42,20 @@ export function createHermesWatcher({ dbPath, windowMs = 90 * 60_000 }) {
   let lastPrint = '';
   let lastRead = 0;
   let cache = [];
+  let backoffUntil = 0;
+  let initial = true;
   const seenEvents = new Set();
   let fresh = [];
   const log = onceLogger('hermes');
 
   function open() {
-    if (db) return;
-    db = new DatabaseSync(dbPath, { readOnly: true });
-    db.exec('PRAGMA busy_timeout = 200');
+    db = openReadOnly(DatabaseSync, dbPath);
     stmts = {
       active: db.prepare(`SELECT s.id, s.source, s.model, s.parent_session_id, s.started_at, s.ended_at, s.title,
           s.tool_call_count, s.input_tokens, s.output_tokens, s.cache_read_tokens,
           substr(s.system_prompt, instr(s.system_prompt, 'Current working directory:'), 400) AS cwd_line,
           MAX(s.started_at, COALESCE(s.ended_at, 0), COALESCE((SELECT MAX(m.timestamp) FROM messages m WHERE m.session_id = s.id), 0)) AS last
-        FROM sessions s WHERE last > ? ORDER BY s.started_at`),
+        FROM sessions s WHERE (s.ended_at IS NULL OR s.ended_at > ?1) AND last > ?1 ORDER BY s.started_at`),
       messages: db.prepare(`SELECT id, role, substr(content, 1, 600) AS content, tool_calls, tool_name, finish_reason, timestamp
         FROM messages WHERE session_id = ? ORDER BY timestamp DESC, id DESC LIMIT ${MESSAGES}`),
     };
@@ -63,11 +65,6 @@ export function createHermesWatcher({ dbPath, windowMs = 90 * 60_000 }) {
     try { db?.close(); } catch { /* bereits zu */ }
     db = null;
     stmts = null;
-  }
-
-  function print() {
-    const st = (p) => { try { const s = fs.statSync(p); return `${s.size}:${s.mtimeMs}`; } catch { return '-'; } };
-    return `${st(dbPath)}|${st(`${dbPath}-wal`)}`;
   }
 
   function readSession(s) {
@@ -116,9 +113,11 @@ export function createHermesWatcher({ dbPath, windowMs = 90 * 60_000 }) {
     return { ...s, cwd, lastMs, status, running: status === 'tool' ? running : null, lastText, lastPrompt, events };
   }
 
+  // Verbindung je Scan öffnen und schließen
   async function scan() {
     const now = Date.now();
-    const p = print();
+    if (now < backoffUntil) return;
+    const p = dbPrint(dbPath);
     if (p === lastPrint && now - lastRead < REFRESH_MS) return;
     try {
       open();
@@ -129,12 +128,16 @@ export function createHermesWatcher({ dbPath, windowMs = 90 * 60_000 }) {
         for (const e of s.events) {
           if (seenEvents.has(e.id)) continue;
           seenEvents.add(e.id);
-          fresh.push({ ...e, agentId: hermesId(s.id), sessionId: s.id });
+          if (!initial) fresh.push({ ...e, agentId: hermesId(s.id), sessionId: s.id });
         }
       }
+      initial = false;
       if (seenEvents.size > 20_000) seenEvents.clear();
     } catch (err) {
-      log('Lesen', err);
+      log(`Lesen (${errKind(err)})`, err);
+      cache = [];
+      backoffUntil = now + BACKOFF_MS;
+    } finally {
       close();
     }
   }

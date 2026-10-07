@@ -12,8 +12,7 @@ import { createAgent } from '../server/core/model.js';
 const pad = (n) => String(n).padStart(2, '0');
 const ID = '01a1174f-3d85-7762-bf33-e203e6f895fe';
 
-function fixture(lines, id = ID) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-codex-'));
+function fixture(lines, id = ID, root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-codex-'))) {
   const d = new Date();
   const dir = path.join(root, String(d.getFullYear()), pad(d.getMonth() + 1), pad(d.getDate()));
   fs.mkdirSync(dir, { recursive: true });
@@ -39,9 +38,11 @@ const lines = [
 ];
 
 test('Codex-Watcher: session_meta, Werkzeug, Text, Tokens', async () => {
-  const { root } = fixture(lines);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-codex-'));
   const w = createCodexWatcher({ root, windowMs: 60 * 60_000 });
   assert.equal(w.adoptable, true);
+  await w.scan(); // erster Scan (leer): baut nur Zustand auf
+  fixture(lines, ID, root);
   await w.scan();
   const [a] = w.agents();
   assert.equal(a.id, `w:codex:${ID}`);
@@ -115,4 +116,29 @@ test('startWatchers setzt adoptable je Watcher und überspringt ACP-gesteuerte C
   state.upsert(createAgent({ id: 'a:1', toolId: 'codex', sessionId: 'x', acpSessionId: ID, project: 'demo', source: 'acp' }));
   await ws.tick();
   assert.equal(state.get(`w:codex:${ID}`), undefined);
+});
+
+test('Codex-Watcher: erster Scan meldet keine historischen Ereignisse; halbe/kaputte Zeilen; Aufräumen', async () => {
+  const { root, file } = fixture(lines);
+  const w = createCodexWatcher({ root, windowMs: 60 * 60_000 });
+  await w.scan();
+  assert.equal(w.takeEvents().length, 0);
+  assert.equal(w.agents()[0].events.length, 4);
+  // kaputte Zeile wird übersprungen, halbe Zeile erst nach Vervollständigung gelesen
+  const msg = JSON.stringify({ timestamp: ts(20), type: 'event_msg', payload: { type: 'user_message', message: 'Weiter bitte' } });
+  fs.appendFileSync(file, '{kaputt\n' + msg.slice(0, 30));
+  await w.scan();
+  assert.equal(w.takeEvents().length, 0);
+  fs.appendFileSync(file, msg.slice(30) + '\n');
+  await w.scan();
+  const evs = w.takeEvents();
+  assert.equal(evs.length, 1);
+  assert.equal(evs[0].label, 'Weiter bitte');
+  assert.equal(w.trackerCount(), 1);
+  // aus dem Zeitfenster gefallen → Tracker weg
+  const realNow = Date.now;
+  Date.now = () => realNow() + 2 * 3600_000;
+  try { await w.scan(); } finally { Date.now = realNow; }
+  assert.equal(w.trackerCount(), 0);
+  assert.deepEqual(w.agents(), []);
 });
