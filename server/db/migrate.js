@@ -14,5 +14,9 @@ export function openDb(target) {
   if (isFile) db.exec('PRAGMA journal_mode=WAL');
   db.exec('PRAGMA busy_timeout=2000');
   db.exec(SCHEMA);
+  // Paket 6: Verweis auf die fortgesetzte Session (ältere Datenbanken ohne Spalte nachrüsten)
+  const cols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
+  if (!cols.includes('parent_session_id')) db.exec('ALTER TABLE sessions ADD COLUMN parent_session_id TEXT');
+  db.exec('CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at)');
   return db;
 }

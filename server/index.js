@@ -18,6 +18,7 @@ import chatHandlers from './api/handlers/chat.js';
 import ptyHandlers from './api/handlers/pty.js';
 import meetingHandlers from './api/handlers/meeting.js';
 import taskHandlers from './api/handlers/task.js';
+import historyHandlers from './api/handlers/history.js';
 import { createMeetings } from './core/meetings.js';
 import { createTasks } from './core/tasks.js';
 import { createPtyManager } from './pty/manager.js';
@@ -27,6 +28,8 @@ import { createSessionManager } from './acp/manager.js';
 const config = loadConfig();
 const db = openDb(config.dbPath);
 const repo = createRepo(db);
+// nach einem Absturz offen gebliebene Sessions beenden (laufende Watcher-Sessions öffnet der Watcher wieder)
+repo.endDangling();
 // Tool-Registry: Standardliste + ~/.agent-arena/agents.json
 const registry = createRegistry({ dataDir: config.dataDir, arenaDir: config.arenaDir });
 const bus = createBus();
@@ -40,7 +43,7 @@ const meetings = createMeetings({ state, bus, repo, acp, registry });
 const tasks = createTasks({ state, bus, repo, acp });
 meetings.load();
 tasks.load();
-const watchers = startWatchers({ state, bus, config, autoStart: false });
+const watchers = startWatchers({ state, bus, repo, config, autoStart: false });
 
 const server = createHttpServer({ config });
 const ws = attachWs({
@@ -48,7 +51,7 @@ const ws = attachWs({
   token: config.token,
   ctx: { state, bus, repo, registry, acp, pty, config, meetings, tasks },
   handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers, ptyHandlers,
-    meetingHandlers, taskHandlers),
+    meetingHandlers, taskHandlers, historyHandlers),
 });
 
 server.on('error', (err) => {

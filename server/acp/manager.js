@@ -10,6 +10,8 @@ import { createTerminalHandlers } from './terminal.js';
 
 export const MODES = ['confirm', 'auto']; // Arena-Modus: Rückfragen bestätigen oder automatisch freigeben
 export const START_TIMEOUT_MS = 60_000;
+// Tools, deren Adapter session/load sicher können (weitere merkt sich die Arena aus initialize)
+export const LOAD_CAPABLE = new Set(['claude', 'codex']);
 
 // Promise mit Zeitlimit (für initialize/newSession/loadSession)
 export function withTimeout(p, ms, label) {
@@ -48,12 +50,14 @@ export function createSessionManager({
   }
 
   // Gemeinsamer Start: Agent anlegen, Prozess starten, initialize; danach new/load durch `open`
-  async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false }) {
+  // adopted: bestehende DB-Session wird übernommen (gehört der Arena erst nach erfolgreichem Laden);
+  // load: open lädt eine Session (Zeitlimit-Text); parentSessionId: Verweis beim Fortsetzen
+  async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false, load = adopted, parentSessionId = null }) {
     const id = `a:${randomUUID()}`;
     const project = path.basename(cwd);
     const projectId = repo?.upsertProject?.({ cwd, name: project }) ?? null;
     try {
-      repo?.createSession?.({ id: sessionId, toolId: tool.id, acpSessionId, projectId, title, source: 'acp', mode });
+      repo?.createSession?.({ id: sessionId, toolId: tool.id, acpSessionId, projectId, title, source: 'acp', mode, parentSessionId });
     } catch { /* Session-Zeile existiert schon (Übernahme) */ }
     const agent = createAgent({
       id, toolId: tool.id, sessionId, acpSessionId, project, cwd, title: title || null, source: 'acp', controllable: true,
@@ -78,7 +82,8 @@ export function createSessionManager({
       client.start();
       const init = await withTimeout(client.initialize(), startTimeoutMs, 'initialize');
       if (closedDuringStart()) throw new Error('beim Start geschlossen');
-      const res = (await withTimeout(Promise.resolve(open(client, session, init)), startTimeoutMs, adopted ? 'session/load' : 'session/new')) ?? {};
+      rememberLoad(tool.id, !!init.agentCapabilities?.loadSession);
+      const res = (await withTimeout(Promise.resolve(open(client, session, init)), startTimeoutMs, load ? 'session/load' : 'session/new')) ?? {};
       if (closedDuringStart()) throw new Error('beim Start geschlossen');
       const modes = res.modes?.availableModes ?? [];
       const patch = {
@@ -152,6 +157,7 @@ export function createSessionManager({
     });
     // Watcher-Agent samt Subagenten entfernen; der Watcher überspringt die Session künftig (acpSessionId)
     for (const a of state.all()) if (a.source === 'watch' && (a.id === w.id || a.parentId === w.id)) state.remove(a.id);
+    try { repo?.reopenSession?.(w.sessionId); } catch { /* DB optional */ }
     bus?.emit('toast', {
       level: 'warn',
       text: `${w.title || 'Session'} fortgesetzt – die laufende CLI-Sitzung sollte beendet werden, sonst schreiben zwei Prozesse`,
@@ -159,7 +165,59 @@ export function createSessionManager({
     return id;
   }
 
-  async function close(agentId) {
+  // ---------------------------------------------------------------- Fortsetzen (Archiv)
+  // Kann das Tool Sessions laden? Gemerkt aus initialize (Tabelle meta), Standard für Claude und Codex
+  const loadCaps = new Map();
+  function rememberLoad(toolId, can) {
+    if (loadCaps.get(toolId) === can) return;
+    loadCaps.set(toolId, can);
+    try { repo?.meta?.set?.(`loadSession:${toolId}`, can ? '1' : '0'); } catch { /* DB optional */ }
+  }
+  function canLoad(toolId) {
+    if (!loadCaps.has(toolId)) {
+      let v = null;
+      try { v = repo?.meta?.get?.(`loadSession:${toolId}`) ?? null; } catch { /* DB optional */ }
+      if (v != null) loadCaps.set(toolId, v === '1');
+    }
+    return loadCaps.has(toolId) ? loadCaps.get(toolId) : LOAD_CAPABLE.has(toolId);
+  }
+
+  const resuming = new Set(); // DB-Session-Ids, deren Fortsetzen gerade läuft
+
+  // Beendete Session aus dem Archiv fortsetzen: neuer ACP-Prozess im gespeicherten Ordner, session/load mit der
+  // gespeicherten ACP-Id, neue Session-Zeile mit Verweis auf die alte (parent_session_id)
+  async function resume(sessionId) {
+    if (resuming.has(sessionId)) throw new Error('Session wird bereits fortgesetzt');
+    resuming.add(sessionId);
+    try { return await resumeNow(sessionId); } finally { resuming.delete(sessionId); }
+  }
+
+  async function resumeNow(sessionId) {
+    const s = repo?.history?.session?.(sessionId);
+    if (!s) throw new Error('Session nicht gefunden');
+    const external = s.acpSessionId ?? (s.source === 'watch' ? s.id : null);
+    if (!external) throw new Error('Session hat keine ladbare ACP-Id');
+    if (!s.cwd) throw new Error('Projektordner der Session unbekannt');
+    const tool = toolOf(s.toolId);
+    if (!canLoad(tool.id)) throw new Error(`${tool.name ?? tool.id} kann Sessions nicht laden`);
+    const taken = state.all().some((a) => a.source === 'acp' && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === external || sid === s.id)));
+    if (taken) throw new Error('Session wird bereits in der Arena gesteuert');
+    // läuft die Session gerade extern (Watcher), wird sie übernommen
+    const w = state.all().find((a) => a.source === 'watch' && a.kind === 'main' && [a.sessionId, a.acpSessionId].includes(external));
+    if (w) return adopt(w.id);
+    const dir = checkDir(s.cwd);
+    return launch({
+      tool, cwd: dir, mode: s.mode === 'auto' ? 'auto' : 'confirm', title: s.title, sessionId: randomUUID(), acpSessionId: external,
+      load: true, parentSessionId: s.id,
+      open: async (client, session, init) => {
+        if (!init.agentCapabilities?.loadSession) throw new Error('Tool kann Sessions nicht laden');
+        return session.load(() => client.loadSession(external));
+      },
+    });
+  }
+
+  // status: 'done' (Nutzer schließt), 'ended' (Server wird beendet)
+  async function close(agentId, status = 'done') {
     const e = entry(agentId);
     sessions.delete(agentId);
     const a = e.session.get();
@@ -169,7 +227,7 @@ export function createSessionManager({
     for (const s of state.all()) if (s.parentId === agentId) state.remove(s.id);
     state.remove(agentId);
     // fehlgeschlagene Übernahme: die externe (Watcher-)Session bleibt offen
-    try { if (a?.sessionId && e.ownsSession) repo?.endSession?.(a.sessionId, 'done'); } catch { /* DB optional */ }
+    try { if (a?.sessionId && e.ownsSession) repo?.endSession?.(a.sessionId, status); } catch { /* DB optional */ }
     return { ok: true };
   }
 
@@ -203,9 +261,15 @@ export function createSessionManager({
   const get = (agentId) => sessions.get(agentId)?.session ?? null;
   const has = (agentId) => sessions.has(agentId);
 
+  // Server-Ende: laufende Sessions gelten als „ended“ (lassen sich im Archiv fortsetzen)
   async function stopAll() {
-    await Promise.all([...sessions.keys()].map((id) => close(id).catch(() => {})));
+    // zuerst in der DB vermerken (das Beenden der Prozesse kann länger dauern als der Server wartet)
+    for (const e of sessions.values()) {
+      const sid = e.session.get()?.sessionId;
+      try { if (sid && e.ownsSession) repo?.endSession?.(sid, 'ended'); } catch { /* DB optional */ }
+    }
+    await Promise.all([...sessions.keys()].map((id) => close(id, 'ended').catch(() => {})));
   }
 
-  return { createSession, adopt, close, prompt, cancel, setMode, setArenaMode, answerPermission, get, has, stopAll, sessions };
+  return { createSession, adopt, resume, canLoad, close, prompt, cancel, setMode, setArenaMode, answerPermission, get, has, stopAll, sessions };
 }

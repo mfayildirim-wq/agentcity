@@ -12,6 +12,7 @@ import sessionHandlers from '../server/api/handlers/session.js';
 import permissionHandlers from '../server/api/handlers/permission.js';
 import fsHandlers from '../server/api/handlers/fs.js';
 import chatHandlers from '../server/api/handlers/chat.js';
+import historyHandlers from '../server/api/handlers/history.js';
 import { createBus } from '../server/core/bus.js';
 import { createState } from '../server/core/state.js';
 import { openDb } from '../server/db/migrate.js';
@@ -40,7 +41,7 @@ before(async () => {
   wsApi = attachWs({
     server, token: TOKEN,
     ctx: { state, bus, repo, registry, acp: manager, pty: null, config },
-    handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, chatHandlers),
+    handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, chatHandlers, historyHandlers),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   port = server.address().port;
@@ -180,5 +181,30 @@ test('fs.pickDir listet sichtbare Unterordner und zuletzt verwendete', async () 
   await assert.rejects(() => ws.request('fs.pickDir', { start: path.join(cwd, 'datei.txt') }), /Kein Ordner/);
   const home = await ws.request('fs.pickDir', {});
   assert.equal(home.path, fs.realpathSync(os.homedir()));
+  ws.close();
+});
+
+test('Verlauf über WS: Session schließen → im Archiv fortsetzbar → history.resume lädt sie (Fake-Agent)', async () => {
+  const ws = open();
+  await ws.opened;
+  ws.send(JSON.stringify({ type: 'hello', token: TOKEN }));
+  await ws.next((m) => m.type === 'snapshot');
+  const { agentId } = await ws.request('session.create', { toolId: 'fake', cwd, title: 'Archiv-Test' });
+  const sessionId = state.get(agentId).sessionId;
+  await ws.request('session.close', { agentId });
+  const { sessions, hasMore } = await ws.request('history.sessions', { ended: true });
+  assert.equal(hasMore, false);
+  const s = sessions.find((x) => x.id === sessionId);
+  assert.equal(s.title, 'Archiv-Test');
+  assert.equal(s.status, 'done');
+  assert.equal(s.resumable, true);
+  assert.equal(s.toolId, 'fake');
+  const res = await ws.request('history.resume', { sessionId });
+  assert.match(res.agentId, /^a:/);
+  await ws.next((m) => m.type === 'chat.chunk' && m.agentId === res.agentId && m.text === 'alte Antwort');
+  const ev = await ws.request('history.events', { sessionId, limit: 10 });
+  assert.ok(Array.isArray(ev.events));
+  assert.ok(Array.isArray(ev.agents));
+  await ws.request('session.close', { agentId: res.agentId });
   ws.close();
 });

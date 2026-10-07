@@ -20,7 +20,8 @@ export function createDefaultWatchers(config) {
 // Übernehmen (session/load) nur für Tools, deren Adapter das zuverlässig kann
 const ADOPTABLE = new Set(['claude', 'codex']);
 
-export function startWatchers({ state, bus, config, watchers = createDefaultWatchers(config), intervalMs = 1500, autoStart = true }) {
+// repo (optional): Session-Ende vermerken, wenn ein Watcher-Hauptagent verschwindet; wieder offen, wenn er zurückkehrt
+export function startWatchers({ state, bus, repo = null, config, watchers = createDefaultWatchers(config), intervalMs = 1500, autoStart = true }) {
   const owned = new Map(watchers.map((w) => [w.id, new Set()])); // watcher-Id → Agent-Ids im Zustand
   let timer = null;
   let running = false;
@@ -36,6 +37,8 @@ export function startWatchers({ state, bus, config, watchers = createDefaultWatc
     return ids;
   }
 
+  const dbCall = (fn) => { if (!repo) return; try { fn(); } catch (err) { console.error('[watch] DB', err?.message ?? err); } };
+
   function syncWatcher(w) {
     // erst nach dem (asynchronen) Scan ermitteln – eine Übernahme kann währenddessen abgeschlossen sein
     const acpSessions = acpSessionIds();
@@ -43,9 +46,20 @@ export function startWatchers({ state, bus, config, watchers = createDefaultWatc
     const adoptable = w.adoptable ?? ADOPTABLE.has(w.id);
     const list = w.agents().filter((a) => !skip(a)).map((a) => ({ ...a, adoptable: adoptable && a.kind === 'main' }));
     const ids = new Set(list.map((a) => a.id));
-    for (const a of list) state.upsert(a);
     const mine = owned.get(w.id);
-    for (const id of mine) if (!ids.has(id)) state.remove(id);
+    for (const a of list) {
+      if (a.kind === 'main' && a.sessionId && !mine.has(a.id)) dbCall(() => repo.reopenSession?.(a.sessionId));
+      state.upsert(a);
+    }
+    for (const id of mine) {
+      if (ids.has(id)) continue;
+      const a = state.get(id);
+      // verschwunden (nicht von einem ACP-Agenten übernommen) → Session beendet, Ende = letzte Aktivität
+      if (a?.kind === 'main' && a.sessionId && !acpSessions.has(a.sessionId)) {
+        dbCall(() => repo.endSession?.(a.sessionId, 'ended', a.lastActivity ?? Date.now()));
+      }
+      state.remove(id);
+    }
     owned.set(w.id, ids);
     // neue Ereignisse für Recorder/Browser (DB dedupliziert per Id)
     for (const event of w.takeEvents?.() ?? []) {

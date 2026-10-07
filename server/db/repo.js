@@ -39,10 +39,10 @@ export function createRepo(db) {
   }
 
   function createSession(s) {
-    q(`INSERT INTO sessions (id, tool_id, acp_session_id, project_id, title, source, mode, started_at, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    q(`INSERT INTO sessions (id, tool_id, acp_session_id, project_id, title, source, mode, started_at, status, parent_session_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(s.id, s.toolId ?? null, s.acpSessionId ?? null, s.projectId ?? null, s.title ?? null,
-        s.source ?? 'acp', s.mode ?? null, s.startedAt ?? Date.now(), s.status ?? 'active');
+        s.source ?? 'acp', s.mode ?? null, s.startedAt ?? Date.now(), s.status ?? 'active', s.parentSessionId ?? null);
     return s.id;
   }
 
@@ -63,9 +63,26 @@ export function createRepo(db) {
     .map((r) => ({ cwd: r.cwd, name: r.name, last: r.last }));
   const getSession = (id) => q('SELECT * FROM sessions WHERE id = ?').get(id);
 
-  function endSession(id, status = 'done') {
-    q('UPDATE sessions SET ended_at = ?, status = ? WHERE id = ?').run(Date.now(), status, id);
+  // Ende nur einmal setzen (ein späteres Schließen überschreibt z. B. den Fehlerstatus nicht)
+  function endSession(id, status = 'done', at = Date.now()) {
+    return q('UPDATE sessions SET ended_at = ?, status = ? WHERE id = ? AND ended_at IS NULL').run(at, status, id).changes > 0;
   }
+
+  // beendete Session wieder öffnen (Watcher-Session wieder aktiv, Übernahme)
+  const reopenSession = (id) => q("UPDATE sessions SET ended_at = NULL, status = 'active' WHERE id = ? AND ended_at IS NOT NULL")
+    .run(id).changes > 0;
+
+  // Beim Start: Sessions ohne Ende (Absturz, harter Abbruch) gelten als beendet – Ende = letztes Ereignis
+  const endDangling = () => q(`UPDATE sessions SET status = 'ended', ended_at = MAX(started_at,
+      COALESCE((SELECT MAX(e.t) FROM events e WHERE e.session_id = sessions.id), started_at))
+    WHERE ended_at IS NULL`).run().changes;
+
+  // kleine Schlüssel/Wert-Ablage (Tabelle meta)
+  const meta = {
+    get: (key) => q('SELECT value FROM meta WHERE key = ?').get(key)?.value ?? null,
+    set: (key, value) => q('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value')
+      .run(key, value == null ? null : String(value)),
+  };
 
   function upsertAgent(a) {
     const ended = a.status === 'done' || a.status === 'error' ? a.lastActivity ?? Date.now() : null;
@@ -182,28 +199,50 @@ export function createRepo(db) {
   };
 
   // ------------------------------------------------------------ Verlauf
+  const rowToSession = (r) => ({
+    id: r.id, toolId: r.tool_id, acpSessionId: r.acp_session_id, projectId: r.project_id, project: r.project_name,
+    cwd: r.cwd, title: r.title, source: r.source, mode: r.mode, startedAt: r.started_at, endedAt: r.ended_at,
+    duration: r.ended_at != null && r.started_at != null ? Math.max(0, r.ended_at - r.started_at) : null,
+    status: r.status, eventCount: r.event_count, parentSessionId: r.parent_session_id ?? null,
+  });
   const history = {
-    sessions(limit = 50, offset = 0) {
+    // ended: nur beendete; since: laufende oder nach diesem Zeitpunkt beendete (für den Zeitstrahl)
+    sessions(opts = {}, offsetArg) {
+      const o = typeof opts === 'number' ? { limit: opts, offset: offsetArg } : opts ?? {};
+      const where = [];
+      const args = [];
+      if (o.ended) where.push('s.ended_at IS NOT NULL');
+      if (o.since != null) { where.push('(s.ended_at IS NULL OR s.ended_at >= ?)'); args.push(o.since); }
       return q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd,
                   (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id) AS event_count
                 FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
-                ORDER BY s.started_at DESC LIMIT ? OFFSET ?`).all(limit, offset)
-        .map((r) => ({
-          id: r.id, toolId: r.tool_id, acpSessionId: r.acp_session_id, projectId: r.project_id, project: r.project_name,
-          cwd: r.cwd, title: r.title, source: r.source, mode: r.mode, startedAt: r.started_at, endedAt: r.ended_at,
-          status: r.status, eventCount: r.event_count,
-        }));
+                ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+                ORDER BY s.started_at DESC, s.rowid DESC LIMIT ? OFFSET ?`).all(...args, o.limit ?? 50, o.offset ?? 0)
+        .map(rowToSession);
     },
-    events(sessionId, from = 0, to = Number.MAX_SAFE_INTEGER, limit = 5000) {
-      return q('SELECT * FROM events WHERE session_id = ? AND t >= ? AND t <= ? ORDER BY t LIMIT ?')
-        .all(sessionId, from ?? 0, to ?? Number.MAX_SAFE_INTEGER, limit ?? 5000)
+    session: (id) => {
+      const r = q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd, 0 AS event_count
+                   FROM sessions s LEFT JOIN projects p ON p.id = s.project_id WHERE s.id = ?`).get(id);
+      return r ? rowToSession(r) : null;
+    },
+    // events(sessionId, { from, to, limit, offset }) – alte Signatur (sessionId, from, to, limit) bleibt gültig
+    events(sessionId, opts = {}, toArg, limitArg) {
+      const o = typeof opts === 'object' && opts !== null ? opts : { from: opts, to: toArg, limit: limitArg };
+      return q('SELECT * FROM events WHERE session_id = ? AND t >= ? AND t <= ? ORDER BY t, rowid LIMIT ? OFFSET ?')
+        .all(sessionId, o.from ?? 0, o.to ?? Number.MAX_SAFE_INTEGER, o.limit ?? 5000, o.offset ?? 0)
         .map((r) => ({ ...parse(r.payload, {}), id: r.id, sessionId: r.session_id, agentId: r.agent_id, t: r.t, kind: r.kind }));
     },
+    // Agenten einer Session (Haupt- und Subagenten) für die Wiedergabe
+    agents: (sessionId) => q('SELECT * FROM agents WHERE session_id = ? ORDER BY started_at').all(sessionId)
+      .map((r) => ({
+        id: r.id, kind: r.kind, parentId: r.parent_id, agentType: r.agent_type, description: r.description, model: r.model,
+        startedAt: r.started_at, endedAt: r.ended_at,
+      })),
   };
 
   return {
     db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, setSessionAcpId, setSessionMode, recentProjects,
-    getSession, endSession,
+    getSession, endSession, reopenSession, endDangling, meta,
     upsertAgent, getAgent, insertEvents, insertMessage, messagesForAgent, insertPermission, resolvePermission, tasks, meetings, history,
   };
 }
