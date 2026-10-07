@@ -6,6 +6,9 @@
 //   „langsam“  → wartet bis zum Abbruch (session/cancel)
 //   „absturz“  → Prozess endet mit Code 3
 //   „stirb“    → stellt eine Berechtigungsanfrage und endet dann mit Code 4
+//   „terminal <befehl>“ → terminal/create beim Client, wartet aufs Ende, meldet Ausgabe + Exit-Code, release
+//   „terminal-kill“ → startet `sleep 30`, killTerminal, meldet Signal/Code, release
+//   „anzeige“  → Bash-Werkzeug mit _meta.terminal_info/_output/_exit (wie der Claude-Adapter)
 //   FAKE_HANG_INIT=1 → initialize antwortet nie
 import { Readable, Writable } from 'node:stream';
 import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
@@ -20,8 +23,9 @@ class FakeAgent {
     this.counter = 0;
   }
 
-  async initialize() {
+  async initialize({ clientCapabilities } = {}) {
     if (process.env.FAKE_HANG_INIT === '1') await new Promise(() => {});
+    this.clientCapabilities = clientCapabilities ?? {};
     return { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'fake-agent', version: '1.0.0' } };
   }
 
@@ -84,6 +88,51 @@ class FakeAgent {
       } catch (err) {
         await this.text(sessionId, `Fehler: ${err?.message ?? err}`);
       }
+      return { stopReason: 'end_turn' };
+    }
+
+    const term = input.match(/^terminal (.+)$/m);
+    if (term || input.includes('terminal-kill')) {
+      const kill = !term;
+      const [command, ...args] = kill ? ['sleep', '30'] : term[1].trim().split(/\s+/);
+      await this.update(sessionId, {
+        sessionUpdate: 'tool_call', toolCallId: 'term1', title: `${command} ${args.join(' ')}`.trim(), kind: 'execute', status: 'in_progress',
+        rawInput: { command: [command, ...args].join(' ') },
+      });
+      try {
+        const handle = await this.conn.createTerminal({ sessionId, command, args, cwd: s.cwd, outputByteLimit: 4096 });
+        if (kill) {
+          await sleep(100);
+          await handle.kill();
+        }
+        const exit = await handle.waitForExit();
+        const out = await handle.currentOutput();
+        await handle.release();
+        await this.update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'term1', status: 'completed' });
+        await this.text(sessionId, `Ausgabe: ${out.output.trim()} | Code: ${exit.exitCode} | Signal: ${exit.signal ?? '-'} | gekürzt: ${out.truncated}`);
+      } catch (err) {
+        await this.update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'term1', status: 'failed' });
+        await this.text(sessionId, `Fehler: ${err?.message ?? err}`);
+      }
+      return { stopReason: 'end_turn' };
+    }
+
+    if (input.includes('anzeige')) {
+      const meta = this.clientCapabilities?._meta?.terminal_output === true;
+      await this.update(sessionId, {
+        sessionUpdate: 'tool_call', toolCallId: 'bash1', title: 'Terminal', kind: 'execute', status: 'pending', rawInput: {},
+        _meta: { claudeCode: { toolName: 'Bash' }, ...(meta ? { terminal_info: { terminal_id: 'bash1' } } : {}) },
+      });
+      await this.update(sessionId, { sessionUpdate: 'tool_call_update', toolCallId: 'bash1', title: 'npm test', rawInput: { command: 'npm test' } });
+      await this.update(sessionId, {
+        sessionUpdate: 'tool_call_update', toolCallId: 'bash1',
+        _meta: { terminal_output: { terminal_id: 'bash1', data: 'tests 12\npass 12\n' } },
+      });
+      await this.update(sessionId, {
+        sessionUpdate: 'tool_call_update', toolCallId: 'bash1', status: 'completed',
+        _meta: { claudeCode: { toolName: 'Bash' }, terminal_exit: { terminal_id: 'bash1', exit_code: 0, signal: null } },
+      });
+      await this.text(sessionId, meta ? 'angezeigt' : 'ohne Anzeige');
       return { stopReason: 'end_turn' };
     }
 

@@ -77,6 +77,7 @@ export class AcpClient extends EventEmitter {
     this.exited = { ...info, stderrTail: this.stderrTail() };
     for (const answer of [...this.openAnswers]) answer({ outcome: 'cancelled' });
     this.openAnswers.clear();
+    try { this.terminal?.dispose?.(); } catch { /* Terminals bereits weg */ }
     this._onClosed(this.exited);
     this.emit('exit', this.exited);
   }
@@ -126,7 +127,12 @@ export class AcpClient extends EventEmitter {
   async initialize() {
     this.info = await this.call(() => this.conn.initialize({
       protocolVersion: PROTOCOL_VERSION,
-      clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: !!this.terminal?.supported },
+      clientCapabilities: {
+        fs: { readTextFile: true, writeTextFile: true },
+        terminal: !!this.terminal?.supported,
+        // Anzeige-Terminals: Claude-/Codex-Adapter melden Befehlsausgaben per _meta.terminal_info/_output/_exit
+        ...(this.terminal?.supported ? { _meta: { terminal_output: true } } : {}),
+      },
       clientInfo: CLIENT_INFO,
     }));
     return this.info;

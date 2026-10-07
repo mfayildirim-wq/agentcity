@@ -26,6 +26,8 @@ export function originAllowed(origin, hostHeader) {
 }
 
 const MAX_BUFFERED = 4 * 1024 * 1024;
+// Terminal-Ausgabe ist verzichtbar (Puffer per pty.list/pty.open nachladbar) – früher überspringen
+const PTY_MAX_BUFFERED = 1024 * 1024;
 
 export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, authTimeoutMs = 5_000 }) {
   const wss = new WebSocketServer({
@@ -39,11 +41,11 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
   const clients = new Set(); // authentifizierte Verbindungen
 
   const encode = (msg) => JSON.stringify(msg);
-  function broadcast(msg) {
+  function broadcast(msg, maxBuffered = MAX_BUFFERED) {
     const data = encode(msg);
     for (const ws of clients) {
       // langsame Clients überspringen statt Speicher zu stauen
-      if (ws.readyState === ws.OPEN && ws.bufferedAmount <= MAX_BUFFERED) ws.send(data);
+      if (ws.readyState === ws.OPEN && ws.bufferedAmount <= maxBuffered) ws.send(data);
     }
   }
 
@@ -55,7 +57,8 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
 
   // Bus-Ereignisse an alle Browser weiterreichen
   const forwarders = BROADCAST_TYPES.map((type) => {
-    const fn = (payload) => broadcast({ type, ...payload });
+    const limit = type === 'pty.output' ? PTY_MAX_BUFFERED : MAX_BUFFERED;
+    const fn = (payload) => broadcast({ type, ...payload }, limit);
     ctx.bus.on(type, fn);
     return [type, fn];
   });

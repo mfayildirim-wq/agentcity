@@ -15,6 +15,8 @@ import permissionHandlers from './api/handlers/permission.js';
 import fsHandlers from './api/handlers/fs.js';
 import settingsHandlers from './api/handlers/settings.js';
 import chatHandlers from './api/handlers/chat.js';
+import ptyHandlers from './api/handlers/pty.js';
+import { createPtyManager } from './pty/manager.js';
 import { createRegistry } from './agents/registry.js';
 import { createSessionManager } from './acp/manager.js';
 
@@ -25,7 +27,9 @@ const repo = createRepo(db);
 const registry = createRegistry({ dataDir: config.dataDir, arenaDir: config.arenaDir });
 const bus = createBus();
 const state = createState({ bus });
-const acp = createSessionManager({ state, bus, repo, registry });
+// Terminals: Nutzer-Shells und Agenten-Terminals (node-pty)
+const pty = createPtyManager({ bus });
+const acp = createSessionManager({ state, bus, repo, registry, pty });
 const recorder = createRecorder({ bus, repo, state });
 const watchers = startWatchers({ state, bus, config, autoStart: false });
 
@@ -33,8 +37,8 @@ const server = createHttpServer({ config });
 const ws = attachWs({
   server,
   token: config.token,
-  ctx: { state, bus, repo, registry, acp, pty: null, config },
-  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers),
+  ctx: { state, bus, repo, registry, acp, pty, config },
+  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers, ptyHandlers),
 });
 
 server.on('error', (err) => {
@@ -64,6 +68,7 @@ async function shutdown(signal) {
   console.log(`\n  ${signal} – Agent Arena wird beendet …`);
   watchers.stop();
   await Promise.race([acp.stopAll(), new Promise((r) => setTimeout(r, 2500))]);
+  pty.closeAll();
   recorder.stop();
   ws.close();
   server.close();

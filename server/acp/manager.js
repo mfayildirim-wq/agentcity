@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { createAgent } from '../core/model.js';
 import { AcpClient, rpcErrorMessage } from './client.js';
 import { createAcpSession } from './session.js';
+import { createTerminalHandlers } from './terminal.js';
 
 export const MODES = ['confirm', 'auto']; // Arena-Modus: Rückfragen bestätigen oder automatisch freigeben
 export const START_TIMEOUT_MS = 60_000;
@@ -29,7 +30,7 @@ function checkDir(cwd) {
 }
 
 export function createSessionManager({
-  state, bus, repo, registry, clientFactory = (opts) => new AcpClient(opts), sessionOptions = {},
+  state, bus, repo, registry, pty = null, clientFactory = (opts) => new AcpClient(opts), sessionOptions = {},
   startTimeoutMs = START_TIMEOUT_MS,
 }) {
   const sessions = new Map(); // agentId → { session, client, launch }
@@ -61,10 +62,13 @@ export function createSessionManager({
     agent.arenaMode = mode === 'auto' ? 'auto' : 'confirm';
     agent.launch = { toolId: tool.id, cwd, mode, title: title || null };
     agent.detail = 'startet …';
-    const client = clientFactory({ tool, cwd });
     // ownsSession: DB-Session gehört dieser Arena-Session (bei Übernahme erst nach erfolgreichem Laden)
-    const entryData = { client, launch: agent.launch, ownsSession: !adopted };
-    const session = createAcpSession({ agent, client, state, bus, repo, ownsSession: () => entryData.ownsSession, ...sessionOptions });
+    const entryData = { client: null, launch: agent.launch, ownsSession: !adopted };
+    // Agenten-Terminals (terminal/*) laufen über den PTY-Manager im Projektordner
+    const terminal = createTerminalHandlers({ pty, cwd, agentId: id, onCreate: (t) => entryData.session?.terminalStarted(t) });
+    const client = clientFactory({ tool, cwd, terminal });
+    entryData.client = client;
+    const session = createAcpSession({ agent, client, state, bus, repo, pty, ownsSession: () => entryData.ownsSession, ...sessionOptions });
     entryData.session = session;
     sessions.set(id, entryData);
     const closedDuringStart = () => sessions.get(id) !== entryData;
@@ -92,6 +96,7 @@ export function createSessionManager({
       // während des Starts geschlossen: aufräumen, keinen Agenten wieder anlegen
       if (closedDuringStart()) {
         session.close();
+        pty?.closeAgent(id);
         throw new Error(`${tool.name ?? tool.id}: Start abgebrochen`);
       }
       const a = session.get();
@@ -99,6 +104,7 @@ export function createSessionManager({
         state.upsert({ ...a, status: 'error', detail: null, error: { message: msg, stderrTail: client.stderrTail(30) }, lastActivity: Date.now() });
       }
       session.close();
+      pty?.closeAgent(id);
       throw new Error(`${tool.name ?? tool.id} konnte nicht starten: ${msg}`);
     }
   }
@@ -139,6 +145,8 @@ export function createSessionManager({
     sessions.delete(agentId);
     const a = e.session.get();
     await e.session.close();
+    // alle Terminals der Session (Nutzer-Shell, Agenten- und Anzeige-Terminals) beenden
+    try { pty?.closeAgent(agentId); } catch { /* bereits weg */ }
     for (const s of state.all()) if (s.parentId === agentId) state.remove(s.id);
     state.remove(agentId);
     // fehlgeschlagene Übernahme: die externe (Watcher-)Session bleibt offen

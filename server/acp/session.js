@@ -40,6 +40,7 @@ export function isSubagentCall(u) {
 const compact = (e) => ({
   id: e.id, t: e.t, kind: e.kind, label: e.label ?? null, tool: e.tool ?? null, category: e.category ?? null,
   status: e.status ?? null, path: e.path ?? null, toolCallId: e.toolCallId ?? null,
+  ...(e.ptyId ? { ptyId: e.ptyId, command: e.command ?? null } : {}),
 });
 
 // Diff-Ereignis: Texte auf je 64 KB begrenzt, Zeilenzahlen für die DB (dort ohne Texte)
@@ -53,8 +54,13 @@ export function diffPayload(c) {
   };
 }
 
+// Befehlszeile für die Anzeige
+export function commandLine(command, args = []) {
+  return [command, ...(Array.isArray(args) ? args : [])].filter((x) => x != null && x !== '').join(' ');
+}
+
 export function createAcpSession({
-  agent, client, state, bus, repo, ownsSession = () => true, subLingerMs = SUB_LINGER_MS, textThrottleMs = TEXT_THROTTLE_MS,
+  agent, client, state, bus, repo, pty = null, ownsSession = () => true, subLingerMs = SUB_LINGER_MS, textThrottleMs = TEXT_THROTTLE_MS,
 }) {
   const id = agent.id;
   let cur = agent;
@@ -64,6 +70,7 @@ export function createAcpSession({
   const pending = new Map(); // permissionId → { perm, resolve, key }
   const alwaysAllow = new Set();
   const timers = new Set();
+  const displays = new Map(); // terminal_id (Adapter, _meta.terminal_info) → { owner, ptyId, command, toolCallId }
   let segment = null; // { id, role, text, owner }
   let turnText = '';
   let busy = false;
@@ -250,6 +257,7 @@ export function createAcpSession({
     patch({ status: 'tool', tool: title, category, detail, toolCount: (owner?.toolCount ?? 0) + 1 }, parentSub);
     if (parentSub !== id && get().status !== 'waiting_permission') patch({ status: 'tool' });
     emitEvent('tool', { toolCallId: u.toolCallId, tool: title, toolKind: kind, category, detail, label: detail ?? '', status: u.status ?? 'pending' }, parentSub);
+    displayTerminal(u, parentSub);
   }
 
   function onToolUpdate(u) {
@@ -279,6 +287,7 @@ export function createAcpSession({
       if (c?.type === 'diff') emitEvent('diff', { toolCallId: u.toolCallId, ...diffPayload(c) }, owner);
     }
     const finished = u.status === 'completed' || u.status === 'failed';
+    displayTerminal(u, owner, finished);
     if (finished || content.length) {
       emitEvent('tool_update', { toolCallId: u.toolCallId, status: u.status ?? null, tool: open?.title ?? u.title ?? null, label: u.status ?? '' }, owner);
     }
@@ -315,6 +324,47 @@ export function createAcpSession({
     const plan = entries.filter((e) => e && typeof e === 'object').map((e) => ({ content: e.content, status: e.status, priority: e.priority }));
     patch({ plan });
     if (!loading) emitEvent('plan', { entries: plan, label: `${plan.filter((e) => e.status === 'completed').length}/${plan.length}` });
+  }
+
+  // ------------------------------------------------------------------ Terminals
+  // Terminal-Ereignis (Agenten-Terminal über ACP terminal/create oder Anzeige-Terminal des Adapters);
+  // die Figur geht dabei zur Terminal-Station
+  function terminalEvent({ ptyId, command, args = [], display = false }, owner = id) {
+    const line = commandLine(command, args) || 'Terminal';
+    emitEvent('terminal', { ptyId, command: line, args, category: 'terminal', label: trunc(line, 90), ...(display ? { display: true } : {}) }, owner);
+    const a = get(owner);
+    if (!a || !busy || a.status === 'waiting_permission') return;
+    patch({ status: 'tool', category: 'terminal', tool: a.status === 'tool' && a.tool ? a.tool : 'Terminal', detail: trunc(line, 80) }, owner);
+  }
+
+  // ACP terminal/create (von acp/terminal.js gemeldet)
+  function terminalStarted(t) {
+    if (closing || loading) return;
+    terminalEvent(t);
+  }
+
+  // _meta.terminal_info/_output/_exit (Claude-/Codex-Adapter): Ausgabe als Anzeige-Terminal ohne Prozess
+  function displayTerminal(u, owner, finished = false) {
+    if (!pty || loading) return;
+    const meta = u._meta ?? {};
+    const termId = meta.terminal_info?.terminal_id ?? meta.terminal_output?.terminal_id ?? meta.terminal_output_delta?.terminal_id
+      ?? meta.terminal_exit?.terminal_id ?? (displays.has(u.toolCallId) ? u.toolCallId : null);
+    if (typeof termId !== 'string' || !termId) return;
+    let d = displays.get(termId);
+    if (!d) { d = { owner, ptyId: null, command: null, toolCallId: u.toolCallId }; displays.set(termId, d); }
+    const cmd = u.rawInput && typeof u.rawInput === 'object' && typeof u.rawInput.command === 'string' ? u.rawInput.command : null;
+    if (cmd) d.command = cmd;
+    const out = meta.terminal_output_delta ?? meta.terminal_output;
+    const exit = meta.terminal_exit;
+    // erst anlegen, wenn der Befehl bekannt ist oder Ausgabe/Ende kommt (Parameter streamen nach)
+    if (!d.ptyId && (d.command || out || exit || finished)) {
+      d.ptyId = pty.openDisplay({ agentId: d.owner, ownerId: id, command: d.command ?? openTools.get(u.toolCallId)?.title ?? null, cwd: get()?.cwd ?? null }).ptyId;
+      terminalEvent({ ptyId: d.ptyId, command: d.command ?? openTools.get(u.toolCallId)?.title ?? 'Befehl', display: true }, d.owner);
+    }
+    if (!d.ptyId) return;
+    if (out && typeof out.data === 'string' && out.data) pty.feed(d.ptyId, out.data.replace(/\r?\n/g, '\r\n'));
+    if (exit) pty.finish(d.ptyId, exit.exit_code ?? null, exit.signal ?? null);
+    else if (finished) pty.finish(d.ptyId, u.status === 'failed' ? 1 : null, null);
   }
 
   // ------------------------------------------------------------------ Berechtigungen
@@ -461,6 +511,7 @@ export function createAcpSession({
   function onExit(info) {
     for (const t of timers) clearTimeout(t);
     timers.clear();
+    for (const d of displays.values()) if (d.ptyId) pty?.finish(d.ptyId);
     busy = false;
     closeSegment();
     cancelPending();
@@ -487,7 +538,7 @@ export function createAcpSession({
   client.on('exit', onExit);
 
   return {
-    id, get, prompt, cancel, answer, setMode, setArenaMode, load, close,
+    id, get, prompt, cancel, answer, setMode, setArenaMode, load, close, terminalStarted,
     get busy() { return busy; },
     hasPermission: (pid) => pending.has(pid),
     pendingPermissions: () => [...pending.values()].map((p) => p.perm),
