@@ -318,9 +318,12 @@ class Room {
   }
 
   tick(t, dt) {
+    const drag = this.world.dragging;
     for (const st of Object.values(this.stations)) {
       st.activity += ((st.busy ? 1 : 0) - st.activity) * Math.min(1, dt * 3);
-      st.pad.userData.fill.material.opacity = 0.08 + st.activity * 0.16;
+      // beim Ziehen einer Figur leuchtet das Meeting-Pad als Ablageziel
+      const hint = drag && st.id === 'meeting' ? (drag.room === this ? 0.34 : 0.16 + Math.sin(t * 5) * 0.05) : 0;
+      st.pad.userData.fill.material.opacity = 0.08 + st.activity * 0.16 + hint;
       st.screens.forEach((s, i) => {
         s.material.emissiveIntensity = 0.15 + st.activity * (0.65 + Math.sin(t * 6 + i * 1.7) * 0.12);
       });
@@ -336,10 +339,17 @@ class Room {
 
 // ---------------------------------------------------------------- Welt
 export class World {
-  constructor(container, labelContainer, { onSelect, onHover } = {}) {
+  // dragInfo(key) → { name, color } für ziehbare Figuren (steuerbare Hauptagenten) oder null;
+  // onDropMeeting(key) – Figur auf ein Meeting-Pad fallen gelassen
+  constructor(container, labelContainer, { onSelect, onHover, dragInfo = null, onDropMeeting = null } = {}) {
     this.container = container;
     this.onSelect = onSelect;
     this.onHover = onHover;
+    this.dragInfo = dragInfo;
+    this.onDropMeeting = onDropMeeting;
+    this.meetingIds = new Set(); // Teilnehmer offener Besprechungen: bleiben am Tisch
+    this.drag = null;
+    this.dragging = null; // { key, room } während des Ziehens
     this.rooms = new Map();
     this.avatars = new Map();
     this.links = new Map();
@@ -439,11 +449,18 @@ export class World {
     let down = null;
     el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', (e) => {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) return;
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || this.dragDone) { this.dragDone = false; return; }
       const key = this.pick(e);
       this.onSelect?.(key);
     });
+    // Drag & Drop einer Figur (Capture-Phase am Container: vor OrbitControls, die während des Ziehens ruhen)
+    this.container.addEventListener('pointerdown', (e) => this.dragStart(e), true);
+    window.addEventListener('pointermove', (e) => this.dragMove(e));
+    window.addEventListener('pointerup', (e) => this.dragEnd(e, false));
+    window.addEventListener('pointercancel', (e) => this.dragEnd(e, true));
+    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.drag) this.dragEnd(e, true); });
     el.addEventListener('pointermove', (e) => {
+      if (this.dragging) return;
       const key = this.pick(e);
       if (key !== this.hoverKey) {
         if (this.hoverKey && this.avatars.get(this.hoverKey)) this.avatars.get(this.hoverKey).hovered = false;
@@ -453,6 +470,73 @@ export class World {
         this.onHover?.(key);
       }
     });
+  }
+
+  dragStart(e) {
+    this.dragDone = false;
+    if (e.button !== 0 || !this.dragInfo || this.drag) return;
+    const key = this.pick(e);
+    const info = key && this.dragInfo(key);
+    if (!info) return;
+    this.drag = { key, info, x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+    this.controls.enabled = false; // kein Drehen, solange eine Figur gegriffen ist
+  }
+
+  dragMove(e) {
+    const d = this.drag;
+    if (!d || e.pointerId !== d.pointerId) return;
+    if (!this.dragging) {
+      if (Math.hypot(e.clientX - d.x, e.clientY - d.y) < 6) return;
+      this.dragging = { key: d.key, room: null };
+      const g = document.createElement('div');
+      g.className = 'drag-ghost';
+      g.innerHTML = '<span class="av sm"><svg viewBox="0 0 32 32"><path d="M16 4 28 16 16 28 4 16Z"/></svg></span><span></span><em>auf den Besprechungstisch ziehen</em>';
+      g.querySelector('.av').style.setProperty('--c', d.info.color);
+      g.querySelector('span:nth-child(2)').textContent = d.info.name;
+      document.body.appendChild(g);
+      d.ghost = g;
+      this.renderer.domElement.style.cursor = 'grabbing';
+    }
+    this.dragging.room = this.meetingPadAt(e);
+    d.ghost.style.transform = `translate(${e.clientX + 14}px, ${e.clientY + 10}px)`;
+    d.ghost.classList.toggle('ok', !!this.dragging.room);
+  }
+
+  dragEnd(e, cancel) {
+    const d = this.drag;
+    if (!d || (e.pointerId !== undefined && e.pointerId !== d.pointerId)) return;
+    this.drag = null;
+    this.controls.enabled = true;
+    if (!this.dragging) return;
+    const room = !cancel && this.meetingPadAt(e);
+    this.dragging = null;
+    this.dragDone = true; // Loslassen ist keine Auswahl
+    d.ghost?.remove();
+    this.renderer.domElement.style.cursor = '';
+    if (room) this.onDropMeeting?.(d.key);
+  }
+
+  // Raum, dessen Meeting-Pad unter dem Zeiger liegt (Schnitt mit dem Boden)
+  meetingPadAt(e) {
+    if (e.clientX === undefined) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const p = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p)) return null;
+    for (const room of this.rooms.values()) {
+      const local = p.clone().sub(room.group.position);
+      if (Math.hypot(local.x - room.meetingCenter.x, local.z - room.meetingCenter.z) < 2.4) return room;
+    }
+    return null;
+  }
+
+  // Teilnehmer offener Besprechungen (danach sync aufrufen)
+  setMeetingIds(ids) {
+    const next = new Set(ids);
+    const same = next.size === this.meetingIds.size && [...next].every((x) => this.meetingIds.has(x));
+    this.meetingIds = next;
+    return !same;
   }
 
   pick(e) {
@@ -618,7 +702,10 @@ export class World {
       room.order = Math.min(...list.map((a) => a.startedAt || Infinity));
       for (const st of Object.values(room.stations)) {
         // Stabile Sitzordnung: Hauptagent vorne, dann nach Startzeit
-        st.queue.sort((x, y) => (x.kind === y.kind ? (x.startedAt || 0) - (y.startedAt || 0) : x.kind === 'main' ? -1 : 1));
+        // am Tisch sitzen Besprechungsteilnehmer vorn (feste Plätze)
+        const rank = (a) => (st.id === 'meeting' && this.meetingIds.has(a.id) ? 0 : 1);
+        st.queue.sort((x, y) => rank(x) - rank(y)
+          || (x.kind === y.kind ? (x.startedAt || 0) - (y.startedAt || 0) : x.kind === 'main' ? -1 : 1));
         st.queue.forEach((a, i) => this.place(this.avatars.get(a.id), room, st, i));
       }
     }
@@ -627,6 +714,11 @@ export class World {
   }
 
   stationFor(a) {
+    // Besprechung: am Tisch bleiben; nur für Werkzeuge kurz zur Station (und zurück)
+    if (this.meetingIds.has(a.id) && a.kind === 'main') {
+      if ((a.status === 'tool' || a.status === 'waiting_permission') && a.category) return a.category;
+      return 'meeting';
+    }
     if ((a.status === 'tool' || a.status === 'waiting_permission') && a.category) return a.category;
     if (a.status === 'waiting_user') return a.kind === 'main' ? 'lounge' : 'meeting';
     if (a.status === 'idle') return 'lounge';

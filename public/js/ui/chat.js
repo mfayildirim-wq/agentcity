@@ -159,7 +159,8 @@ export class ChatBar {
   // Sichtbar nur bei steuerbarem, ausgewähltem Agenten
   render(selected, changes) {
     const a = selected ? this.store.state.agents.get(selected) : null;
-    const show = !!(a && a.controllable && a.kind === 'main');
+    // im Meeting-Modus übernimmt die Besprechungs-Leiste (ui/meeting.js) den Platz
+    const show = !!(a && a.controllable && a.kind === 'main') && !this.suppressed;
     this.el.classList.toggle('hidden', !show);
     document.body.classList.toggle('has-chat', show);
     if (!show) { this.agentId = null; this.shell?.detach(); return; }

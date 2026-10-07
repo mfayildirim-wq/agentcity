@@ -361,3 +361,138 @@ body.has-chat .detail { max-height: calc(100vh - 80px); }
 .row:hover .adopt-btn, .row.sel .adopt-btn { opacity: 1; }
 .row .adopt-btn:hover { background: rgba(63, 182, 122, 0.16); }
 .row .adopt-btn svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ------------------------------------------------------------ Paket 5: Besprechung */
+.meet-pick {
+  position: fixed; z-index: 12; top: 56px; right: calc(var(--panel-w) + 24px); width: 290px; max-height: calc(100vh - 80px); overflow-y: auto;
+  background: var(--glass-2); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--line-2); border-radius: 10px; padding: 6px; box-shadow: 0 14px 40px rgba(0, 0, 0, 0.4);
+  animation: rise 0.18s ease; scrollbar-width: thin;
+}
+body.panel-off .meet-pick { right: 12px; }
+.mp-label { margin: 6px 6px 4px; color: var(--tx-3); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.mp-row {
+  display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 6px; border: 0; border-radius: 7px;
+  background: none; color: var(--tx-2); cursor: pointer; font-size: 12px; text-align: left;
+}
+.mp-row:hover { background: rgba(255, 255, 255, 0.05); color: var(--tx); }
+.mp-row.on { color: var(--tx); }
+.mp-row > .ic { width: 13px; height: 13px; color: var(--accent); }
+.mp-check { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line-2); display: grid; place-items: center; flex: none; }
+.mp-row.on .mp-check { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mp-check .ic { width: 10px; height: 10px; stroke-width: 2.6; }
+.mp-name { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mp-proj, .mp-n { color: var(--tx-3); font-size: 11px; white-space: nowrap; max-width: 90px; overflow: hidden; text-overflow: ellipsis; }
+.mp-foot { display: flex; gap: 6px; padding: 6px 4px 2px; border-top: 1px solid var(--line); margin-top: 6px; }
+.mp-foot input, .b-add input, .m-form input, .m-form textarea, .m-form select {
+  flex: 1; min-width: 0; font: inherit; font-size: 12px; color: var(--tx); background: rgba(255,255,255,.04);
+  border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 7px; outline: none;
+}
+.mp-foot input:focus, .b-add input:focus, .m-form input:focus, .m-form textarea:focus { border-color: rgba(217, 119, 87, 0.55); }
+.mp-empty { color: var(--tx-3); font-size: 11.5px; padding: 6px; }
+
+/* Chat-Leiste im Meeting-Modus */
+.chat.meet { border-color: rgba(217, 119, 87, 0.28); }
+.m-ic { color: var(--accent); display: grid; place-items: center; }
+.m-ic .ic { width: 14px; height: 14px; }
+.chat.meet .c-name { flex: 0 1 auto; color: var(--tx); }
+.m-people { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
+.m-person { position: relative; cursor: pointer; padding: 2px; border-radius: 50%; }
+.m-person .av { box-shadow: 0 0 0 1.5px var(--s), inset 0 -2px 4px rgba(0,0,0,.25); }
+.m-person i { position: absolute; right: 0; bottom: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--s); border: 1px solid #1e232c; }
+.m-person.pending i { animation: pulse 1.2s infinite; }
+.m-person:hover { background: rgba(255,255,255,.07); }
+.m-end.armed { background: rgba(229, 83, 75, 0.2); color: #f2867f; }
+.m-menu { border-bottom: 1px solid var(--line); padding: 4px; max-height: 180px; overflow-y: auto; }
+.m-msg { display: flex; flex-direction: column; gap: 2px; align-self: stretch; position: relative; }
+.m-msg .c-msg.agent { max-width: 100%; padding-left: 24px; }
+.m-who { display: flex; align-items: center; gap: 6px; font-size: 11.5px; cursor: pointer; }
+.m-who b { font-weight: 600; color: var(--tx-2); }
+.m-who time, .m-to { color: var(--tx-3); font-size: 10px; }
+.m-to { margin-right: 6px; }
+.m-act {
+  margin-left: auto; display: grid; place-items: center; width: 22px; height: 20px; border: 0; border-radius: 5px; background: none;
+  color: var(--tx-3); cursor: pointer; opacity: 0; transition: opacity 0.12s;
+}
+.m-act .ic { width: 12px; height: 12px; }
+.m-msg:hover .m-act, .m-user:hover .m-act, .marked .m-act { opacity: 1; }
+.m-act:hover { color: var(--accent); background: rgba(217, 119, 87, 0.12); }
+.m-user { position: relative; }
+.m-user .m-act { position: absolute; left: -26px; top: 2px; }
+.marked { outline: 1px dashed rgba(217, 119, 87, 0.5); outline-offset: 3px; border-radius: 6px; }
+.m-pending { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--tx-3); cursor: pointer; }
+.m-pending b { color: var(--tx-2); font-weight: 600; }
+.m-pending i { width: 4px; height: 4px; border-radius: 50%; background: var(--tx-3); animation: blink 1.2s infinite; }
+.m-pending i:nth-of-type(2) { animation-delay: 0.2s; }
+.m-pending i:nth-of-type(3) { animation-delay: 0.4s; }
+.m-form { border-top: 1px solid var(--line); padding: 7px 10px; display: flex; flex-direction: column; gap: 5px; }
+.m-form-head { display: flex; align-items: center; gap: 6px; color: var(--tx-2); font-size: 11.5px; font-weight: 600; }
+.m-form-head .ic { width: 13px; height: 13px; color: var(--accent); }
+.m-form textarea { resize: vertical; min-height: 44px; max-height: 160px; }
+.m-form-foot { display: flex; align-items: center; gap: 6px; }
+.m-form-foot label { flex: 1; display: flex; align-items: center; gap: 6px; color: var(--tx-3); font-size: 11.5px; min-width: 0; }
+.m-form select { cursor: pointer; }
+.m-form select option { background: #222833; }
+
+/* Figur ziehen */
+.drag-ghost {
+  position: fixed; z-index: 40; left: 0; top: 0; pointer-events: none; display: flex; align-items: center; gap: 6px;
+  padding: 4px 9px 4px 5px; border-radius: 999px; background: var(--glass-2); border: 1px solid var(--line-2);
+  font-size: 11.5px; color: var(--tx); box-shadow: 0 8px 24px rgba(0,0,0,.4); white-space: nowrap;
+}
+.drag-ghost em { font-style: normal; color: var(--tx-3); font-size: 10.5px; }
+.drag-ghost.ok { border-color: var(--accent); }
+.drag-ghost.ok em { color: var(--accent); }
+
+/* ------------------------------------------------------------ Paket 5: Aufgaben-Board */
+.board-wrap { position: fixed; z-index: 6; top: 58px; left: 12px; width: 320px; max-height: calc(100vh - 70px); display: flex; pointer-events: none; }
+.board {
+  pointer-events: auto; flex: 1; min-width: 0; max-height: 100%; display: flex; flex-direction: column; position: relative;
+  background: var(--glass); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line); border-radius: var(--r); box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25); animation: rise 0.2s ease;
+}
+.b-head { display: flex; align-items: center; gap: 6px; padding: 6px 6px 6px 10px; border-bottom: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--tx-2); }
+.b-head > .ic { width: 13px; height: 13px; color: var(--accent); }
+.b-head span { flex: 0 0 auto; }
+.b-count { flex: 1; color: var(--tx-3); font-weight: 500; font-variant-numeric: tabular-nums; }
+.b-add { padding: 6px 8px; border-bottom: 1px solid var(--line); display: flex; }
+.b-cols { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 3px; padding: 5px; overflow-y: auto; align-items: start; scrollbar-width: thin; }
+.b-col { min-height: 90px; border-radius: 7px; padding: 3px; display: flex; flex-direction: column; gap: 4px; transition: background 0.12s; }
+.b-col.over { background: color-mix(in srgb, var(--c) 14%, transparent); outline: 1px dashed color-mix(in srgb, var(--c) 60%, transparent); }
+.b-col-head { display: flex; align-items: flex-start; gap: 4px; padding: 2px 2px 4px; font-size: 9.5px; font-weight: 600; line-height: 1.25; letter-spacing: 0.02em; color: var(--tx-3); min-height: 26px; }
+.b-col-head i { margin-top: 3px; }
+.b-col-head i { width: 6px; height: 6px; border-radius: 50%; background: var(--c); flex: none; }
+.b-col-head span { min-width: 0; }
+.b-col-head b { margin-left: auto; font-weight: 500; }
+.b-card {
+  background: rgba(30, 35, 45, 0.92); border: 1px solid var(--line); border-left: 2px solid var(--c); border-radius: 6px;
+  padding: 4px 4px 3px 5px; cursor: grab; font-size: 11px; line-height: 1.3; transition: border-color 0.12s, opacity 0.12s;
+}
+.b-card:hover { border-color: var(--line-2); border-left-color: var(--c); }
+.b-card.sel { background: rgba(217, 119, 87, 0.14); }
+.b-card.dragging { opacity: 0.4; }
+.b-col[data-col='done'] .b-card { opacity: 0.6; }
+.b-title { display: -webkit-box; -webkit-line-clamp: 5; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; hyphens: auto; color: var(--tx); font-size: 10.5px; }
+.b-foot { display: flex; align-items: center; gap: 3px; margin-top: 4px; }
+.b-av { border: 0; padding: 0; background: none; cursor: pointer; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; color: var(--tx-3); }
+.b-av.none { border: 1px dashed var(--line-2); }
+.b-av.none .ic { width: 10px; height: 10px; }
+.b-av:hover { color: var(--accent); }
+.b-age { color: var(--tx-3); font-size: 9.5px; white-space: nowrap; overflow: hidden; }
+.b-del { margin-left: auto; border: 0; background: none; padding: 1px; color: var(--tx-3); cursor: pointer; opacity: 0; border-radius: 4px; display: grid; }
+.b-del .ic { width: 11px; height: 11px; }
+.b-card:hover .b-del { opacity: 1; }
+.b-del.armed { opacity: 1; color: #f2867f; background: rgba(229, 83, 75, 0.18); }
+.b-pick {
+  position: absolute; z-index: 3; min-width: 170px; max-width: 240px; padding: 4px; display: flex; flex-direction: column; gap: 1px;
+  background: var(--glass-2); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,.45);
+}
+.b-pick button { display: flex; align-items: center; gap: 6px; border: 0; background: none; padding: 4px 6px; border-radius: 6px; cursor: pointer; color: var(--tx-2); font-size: 11.5px; text-align: left; }
+.b-pick button:hover, .b-pick button.on { background: rgba(255,255,255,.06); color: var(--tx); }
+.b-pick button span:not(.av) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.b-pick em { font-style: normal; color: var(--tx-3); font-size: 10.5px; }
+.b-none { padding: 4px 6px; }
+/* Board links: Detailkarte und Chat rücken nach rechts */
+body.has-board .detail { left: calc(12px + 320px + 12px); }
+body.has-board .chat-wrap { left: calc(12px + 320px + 12px + 330px + 12px); }
+@media (max-width: 1200px) { body.has-board .chat-wrap { left: calc(12px + 320px + 12px); } }

@@ -15,6 +15,7 @@ export function createStore() {
     diffs: {}, // agentId → [Diff-Ereignis mit oldText/newText] (Server-Agenten tragen nur kompakte Ereignisse)
     terminals: new Map(), // ptyId → { ptyId, agentId, ownerId, kind, command, t, exited, exitCode, signal, data }
     selected: null,
+    meetingView: null, // geöffnete Besprechung (Chat-Leiste im Meeting-Modus) oder null
     connection: 'off', // live | off | demo
     clockOffset: 0, // Serverzeit − Browserzeit
   };
@@ -54,7 +55,8 @@ export function createStore() {
     const prev = state.agents;
     state.agents = new Map((snap.agents || []).map((a) => [a.id, mergeAgent(prev.get(a.id), a)]));
     state.tasks = toMap(snap.tasks);
-    state.meetings = toMap(snap.meetings);
+    state.meetings = toMap((snap.meetings || []).filter((m) => !m.closedAt));
+    if (state.meetingView && !state.meetings.has(state.meetingView)) setMeetingView(null);
     state.permissions = toMap(snap.permissions);
     if (snap.tools) { state.tools = snap.tools; changed('tools'); }
     if (state.selected && !state.agents.has(state.selected)) select(null);
@@ -180,7 +182,21 @@ export function createStore() {
   function applyPermission(permission) { state.permissions.set(permission.id, permission); changed('permissions'); }
   function applyPermissionResolved(permissionId) { state.permissions.delete(permissionId); changed('permissions'); }
   function applyTask(task) { state.tasks.set(task.id, task); changed('tasks'); }
-  function applyMeeting(meeting) { state.meetings.set(meeting.id, meeting); changed('meetings'); }
+  function applyTaskRemove(taskId) { if (state.tasks.delete(taskId)) changed('tasks'); }
+  // geschlossene Besprechungen verschwinden
+  function applyMeeting(meeting) {
+    if (meeting.closedAt) {
+      state.meetings.delete(meeting.id);
+      if (state.meetingView === meeting.id) setMeetingView(null);
+    } else state.meetings.set(meeting.id, meeting);
+    changed('meetings');
+  }
+  function setMeetingView(id) {
+    if (state.meetingView === id) return;
+    state.meetingView = id;
+    changed('meetingView');
+  }
+  const openMeetings = () => [...state.meetings.values()].filter((m) => !m.closedAt).sort((x, y) => (x.createdAt ?? 0) - (y.createdAt ?? 0));
 
   function select(id) {
     if (state.selected === id) return;
@@ -201,8 +217,11 @@ export function createStore() {
     state.chats = {};
     state.diffs = {};
     state.terminals = new Map();
+    state.tasks = new Map();
+    state.meetings = new Map();
+    setMeetingView(null);
     select(null);
-    changed('agents');
+    changed('agents'); changed('tasks'); changed('meetings');
   }
 
   // Server-Nachricht → passende apply-Funktion
@@ -217,6 +236,7 @@ export function createStore() {
       case 'permission.request': applyPermission(msg.permission); return true;
       case 'permission.resolved': applyPermissionResolved(msg.permissionId); return true;
       case 'task.update': applyTask(msg.task); return true;
+      case 'task.remove': applyTaskRemove(msg.taskId); return true;
       case 'meeting.update': applyMeeting(msg.meeting); return true;
       case 'tools.update': applyTools(msg.tools); return true;
       case 'pty.output': applyPtyOutput(msg); return true;
@@ -228,7 +248,7 @@ export function createStore() {
   return {
     state, subscribe, now, agentList, dispatch, clear, chatOf,
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
-    applyPermission, applyPermissionResolved, applyTask, applyMeeting, applyChatHistory, applyTools, select, setConnection,
+    applyPermission, applyPermissionResolved, applyTask, applyTaskRemove, applyMeeting, setMeetingView, openMeetings, applyChatHistory, applyTools, select, setConnection,
     applyTerminalList, applyPtyOutput, applyPtyExit, upsertTerminal, onPty, terminalsOf,
   };
 }

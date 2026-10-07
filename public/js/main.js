@@ -13,7 +13,9 @@ import { PermissionStack } from './ui/permission.js';
 import { NewSessionDialog } from './ui/newsession.js';
 import { SettingsPanel } from './ui/settings.js';
 import { ShellView, OutputView } from './ui/terminal.js';
-import { setTools } from './config.js';
+import { setTools, agentName, agentColor } from './config.js';
+import { MeetingPicker, MeetingBar, meetingTitle } from './ui/meeting.js';
+import { Board } from './ui/board.js';
 
 const params = new URLSearchParams(location.search);
 const store = createStore();
@@ -29,7 +31,13 @@ const liveEl = $('live');
 const select = (id) => store.select(id);
 const hover = (id) => { for (const [k, av] of world.avatars) av.hovered = k === id; };
 
-const world = new World($('stage'), $('labels'), { onSelect: select, onHover: () => {} });
+// Figuren steuerbarer Sessions lassen sich auf den Besprechungstisch ziehen
+const dragInfo = (id) => {
+  const a = store.state.agents.get(id);
+  if (!a || a.source !== 'acp' || a.kind !== 'main' || !a.controllable || store.state.connection !== 'live') return null;
+  return { name: agentName(a), color: agentColor(a) };
+};
+const world = new World($('stage'), $('labels'), { onSelect: select, onHover: () => {}, dragInfo, onDropMeeting: (id) => dropOnMeeting(id) });
 const list = new AgentList($('list'), {
   onSelect: select, onHover: hover,
   onAdopt: (id) => { const a = store.state.agents.get(id); return a && sessionAction('adopt', a); },
@@ -79,6 +87,69 @@ const newSession = new NewSessionDialog($('newsession'), {
 });
 
 const settings = new SettingsPanel($('settings'), { request: quiet, toast });
+
+// ---------------------------------------------------------------- Besprechungen und Aufgaben
+const openMeeting = (id) => { store.setMeetingView(id); };
+const meetingPicker = new MeetingPicker($('meetpick'), {
+  store,
+  onOpen: openMeeting,
+  async onCreate({ title, participantIds }) {
+    const res = await request('meeting.create', { title, participantIds });
+    store.applyMeeting(res.meeting);
+    openMeeting(res.meeting.id);
+  },
+});
+const meetingBar = new MeetingBar($('meeting'), {
+  store,
+  onSend: (meetingId, text) => request('meeting.message', { meetingId, text }, 30_000),
+  onParticipants: (meetingId, participantIds) => request('meeting.update', { meetingId, participantIds }),
+  onCloseMeeting: (meetingId) => request('meeting.update', { meetingId, closed: true }).catch(() => {}),
+  onLeave: () => store.setMeetingView(null),
+  onCreateTask: async (task) => {
+    const res = await request('task.create', task, 30_000);
+    store.applyTask(res.task);
+    const who = res.task.assigneeId && store.state.agents.get(res.task.assigneeId);
+    toast(who ? `Aufgabe an ${agentName(who)} übergeben` : 'Aufgabe angelegt', 'info');
+  },
+  onSelect: (id) => { store.setMeetingView(null); select(id); },
+});
+const board = new Board($('board'), {
+  store,
+  onCreate: (t) => request('task.create', t).then((r) => store.applyTask(r.task)),
+  onUpdate: (taskId, patch) => request('task.update', { taskId, ...patch }),
+  onAssign: (taskId, agentId) => request('task.assign', { taskId, agentId }, 30_000).then((r) => store.applyTask(r.task)),
+  onDelete: (taskId) => request('task.delete', { taskId }).then(() => store.applyTaskRemove(taskId)),
+  onSelect: select,
+});
+board.onToggle = (on) => $('btn-board').classList.toggle('on', on);
+
+// Figur auf ein Meeting-Pad gezogen: zur geöffneten (bzw. einzigen offenen) Besprechung hinzufügen, sonst neue
+async function dropOnMeeting(agentId) {
+  const a = store.state.agents.get(agentId);
+  if (!a) return;
+  const open = store.openMeetings();
+  const target = store.state.meetings.get(store.state.meetingView) ?? (open.length === 1 ? open[0] : null);
+  try {
+    if (target) {
+      if (!target.participantIds.includes(agentId)) {
+        const res = await request('meeting.update', { meetingId: target.id, participantIds: [...target.participantIds, agentId] });
+        store.applyMeeting(res.meeting);
+        toast(`${agentName(a)} nimmt an „${meetingTitle(target)}“ teil`, 'info');
+      }
+      openMeeting(target.id);
+    } else {
+      const res = await request('meeting.create', { participantIds: [agentId] });
+      store.applyMeeting(res.meeting);
+      openMeeting(res.meeting.id);
+    }
+  } catch { /* Hinweis kam als Toast */ }
+}
+
+const liveOnly = () => {
+  if (demo) { toast('Besprechungen und Aufgaben gibt es nur live', 'warn'); return false; }
+  if (liveState !== 'live') { toast('Keine Verbindung zum Server', 'warn'); return false; }
+  return true;
+};
 
 // Chatverlauf aus der DB nachladen (z. B. nach Neuladen der Seite), einmal je Agent
 const historyLoaded = new Set();
@@ -131,7 +202,10 @@ store.subscribe((s, changes) => {
     if (settings.isOpen) settings.load(); // Änderung aus einem anderen Fenster
   }
   const agents = store.agentList();
-  if (changes.has('agents') || changes.has('tools')) {
+  // Teilnehmer offener Besprechungen bleiben am Tisch
+  const meetingMoved = (changes.has('meetings') || changes.has('agents'))
+    && world.setMeetingIds(store.openMeetings().flatMap((m) => m.participantIds));
+  if (changes.has('agents') || changes.has('tools') || meetingMoved) {
     world.sync(agents);
     renderStats(statsEl, agents);
     emptyEl.classList.toggle('hidden', agents.length > 0);
@@ -142,7 +216,17 @@ store.subscribe((s, changes) => {
     detail.render(agents, s.selected, store.now);
     if (changes.has('selected')) list.scrollTo(s.selected);
   }
-  if (changes.has('agents') || changes.has('selected') || changes.has('chats')) chat.render(s.selected, changes);
+  const meetingOn = !!(s.meetingView && s.meetings.has(s.meetingView));
+  if (changes.has('meetingView') || changes.has('meetings')) {
+    chat.suppressed = meetingOn;
+    $('btn-meeting').classList.toggle('on', meetingOn);
+  }
+  if (changes.has('agents') || changes.has('selected') || changes.has('chats') || changes.has('meetingView') || changes.has('meetings')) chat.render(s.selected, changes);
+  if (changes.has('meetings') || changes.has('meetingView') || changes.has('agents')) {
+    meetingBar.render(meetingOn ? s.meetingView : null, changes);
+    if (meetingPicker.isOpen && (changes.has('meetings') || changes.has('agents'))) meetingPicker.draw();
+  }
+  if (changes.has('tasks') || changes.has('agents') || changes.has('selected')) board.render();
   if (changes.has('permissions') || changes.has('agents')) perms.render(s.permissions, s.agents);
   if (changes.has('connection')) {
     liveEl.dataset.state = s.connection;
@@ -208,6 +292,21 @@ $('btn-settings').addEventListener('click', () => {
   if (newSession.isOpen) newSession.close();
   settings.toggle();
 });
+const toggleMeetingPicker = () => {
+  if (!liveOnly()) return;
+  if (newSession.isOpen) newSession.close();
+  meetingPicker.toggle();
+};
+const toggleBoard = () => {
+  board.toggle();
+  $('btn-board').classList.toggle('on', board.isOpen);
+};
+$('btn-meeting').addEventListener('click', toggleMeetingPicker);
+$('btn-board').addEventListener('click', toggleBoard);
+// Klick außerhalb schließt die Besprechungsauswahl
+document.addEventListener('pointerdown', (e) => {
+  if (meetingPicker.isOpen && !e.target.closest('#meetpick, #btn-meeting')) meetingPicker.close();
+});
 $('btn-legend').addEventListener('click', (e) => {
   const el = $('legend');
   el.classList.toggle('hidden');
@@ -228,8 +327,13 @@ window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea, [contenteditable]')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'Escape') {
-    if (settings.isOpen) settings.close(); else if (newSession.isOpen) newSession.close(); else select(null);
+    if (meetingPicker.isOpen) meetingPicker.close();
+    else if (settings.isOpen) settings.close(); else if (newSession.isOpen) newSession.close();
+    else if (store.state.meetingView) store.setMeetingView(null);
+    else select(null);
   }
+  if (e.key === 'b' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleMeetingPicker(); }
+  if (e.key === 't' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleBoard(); }
   if (e.key === 'r') { select(null); world.resetView(); }
   if (e.key === 'n' && !newSession.isOpen && !settings.isOpen && !perms.list.length) { e.preventDefault(); openNew(); }
 });
