@@ -1,12 +1,24 @@
 // Startet alle Datei-Watcher, gleicht deren Agenten mit dem Zustand ab und
 // überspringt Sessions, die bereits von einem ACP-Agenten gesteuert werden.
+import fs from 'node:fs';
 import { createClaudeWatcher } from './claude.js';
+import { createCodexWatcher } from './codex.js';
+import { createOpencodeWatcher } from './opencode.js';
+import { createHermesWatcher } from './hermes.js';
 
+// Watcher nur für vorhandene Quellen; Claude bleibt immer dabei (Ordner kann später entstehen)
 export function createDefaultWatchers(config) {
-  return [
-    createClaudeWatcher({ root: config.claudeProjectsDir, windowMs: (config.windowMin ?? 90) * 60_000 }),
-  ];
+  const windowMs = (config.windowMin ?? 90) * 60_000;
+  const exists = (p) => { try { return !!p && fs.existsSync(p); } catch { return false; } };
+  const list = [createClaudeWatcher({ root: config.claudeProjectsDir, windowMs })];
+  if (exists(config.codexSessionsDir)) list.push(createCodexWatcher({ root: config.codexSessionsDir, windowMs }));
+  if (exists(config.opencodeDb)) list.push(createOpencodeWatcher({ dbPath: config.opencodeDb, windowMs }));
+  if (exists(config.hermesDb)) list.push(createHermesWatcher({ dbPath: config.hermesDb, windowMs }));
+  return list;
 }
+
+// Übernehmen (session/load) nur für Tools, deren Adapter das zuverlässig kann
+const ADOPTABLE = new Set(['claude', 'codex']);
 
 export function startWatchers({ state, bus, config, watchers = createDefaultWatchers(config), intervalMs = 1500, autoStart = true }) {
   const owned = new Map(watchers.map((w) => [w.id, new Set()])); // watcher-Id → Agent-Ids im Zustand
@@ -15,7 +27,8 @@ export function startWatchers({ state, bus, config, watchers = createDefaultWatc
 
   function syncWatcher(w, acpSessions) {
     const skip = (a) => a.sessionId && acpSessions.has(a.sessionId);
-    const list = w.agents().filter((a) => !skip(a));
+    const adoptable = w.adoptable ?? ADOPTABLE.has(w.id);
+    const list = w.agents().filter((a) => !skip(a)).map((a) => ({ ...a, adoptable: adoptable && a.kind === 'main' }));
     const ids = new Set(list.map((a) => a.id));
     for (const a of list) state.upsert(a);
     const mine = owned.get(w.id);
@@ -58,7 +71,11 @@ export function startWatchers({ state, bus, config, watchers = createDefaultWatc
     timer.unref?.();
   }
 
-  function stop() { clearInterval(timer); timer = null; }
+  function stop() {
+    clearInterval(timer);
+    timer = null;
+    for (const w of watchers) try { w.close?.(); } catch { /* bereits zu */ }
+  }
 
   if (autoStart) start();
   return { tick, start, stop, watchers };
