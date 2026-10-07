@@ -110,6 +110,8 @@ export function createSessionManager({
       }
       session.close();
       pty?.closeAgent(id);
+      // eigene Session-Zeile (neue Session, Fortsetzen) als fehlgeschlagen beenden – nicht bei einer Übernahme
+      try { if (entryData.ownsSession) repo?.endSession?.(sessionId, 'error'); } catch { /* DB optional */ }
       throw new Error(`${tool.name ?? tool.id} konnte nicht starten: ${msg}`);
     }
   }
@@ -195,12 +197,15 @@ export function createSessionManager({
   async function resumeNow(sessionId) {
     const s = repo?.history?.session?.(sessionId);
     if (!s) throw new Error('Session nicht gefunden');
+    if (s.endedAt == null) throw new Error('Session läuft noch – nur beendete Sessions lassen sich fortsetzen');
     const external = s.acpSessionId ?? (s.source === 'watch' ? s.id : null);
     if (!external) throw new Error('Session hat keine ladbare ACP-Id');
     if (!s.cwd) throw new Error('Projektordner der Session unbekannt');
     const tool = toolOf(s.toolId);
     if (!canLoad(tool.id)) throw new Error(`${tool.name ?? tool.id} kann Sessions nicht laden`);
-    const taken = state.all().some((a) => a.source === 'acp' && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === external || sid === s.id)));
+    // fehlgeschlagene Starts (Status error) blockieren nicht
+    const taken = state.all().some((a) => a.source === 'acp' && a.status !== 'error'
+      && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === external || sid === s.id)));
     if (taken) throw new Error('Session wird bereits in der Arena gesteuert');
     // Der Watcher zeigt auch die Sitzungsdatei einer gerade geschlossenen Arena-Session – deren Agent wird ersetzt.
     // Eine externe Session (source watch), die gerade läuft, wird dagegen übernommen.

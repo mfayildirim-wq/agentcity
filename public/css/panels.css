@@ -597,3 +597,5 @@ body.has-board .tl-wrap { left: calc(12px + 320px + 12px + 330px + 12px); }
 body.playback .perms, body.playback .chat-wrap, body.playback .meet-pick { display: none !important; }
 body.playback #stage { filter: saturate(0.7) brightness(0.95); }
 body.playback { --tl-bottom: 12px !important; }
+.ar-tool { font-style: normal; color: color-mix(in srgb, var(--c) 75%, #fff); }
+.pb-banner em { font-style: normal; color: #f0c27a; }

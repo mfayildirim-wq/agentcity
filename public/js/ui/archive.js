@@ -136,7 +136,7 @@ export class Archive {
       return `<div class="ar-row ${isOpen ? 'open' : ''}" data-sid="${esc(s.id)}">
           <span class="av sm" style="--c:${color}" title="${esc(tool?.name ?? s.toolId ?? '')}">${DIAMOND}</span>
           <div class="ar-main"><b>${esc(s.title || 'Ohne Titel')}</b>
-            <span>${esc(project)} · ${fmtDate(s.startedAt)} · ${fmtDuration(s.duration)}</span></div>
+            <span><em class="ar-tool" style="--c:${color}">${esc(tool?.name ?? s.toolId ?? '?')}</em> · ${esc(project)} · ${fmtDate(s.startedAt)} · ${fmtDuration(s.duration)}</span></div>
           <i class="ar-st" style="--c:${st}" title="${esc(STATUS_LABEL[s.status] ?? s.status ?? '')}${s.source === 'watch' ? ' · extern' : ''}"></i>
           ${resumeBtn}
         </div>${isOpen ? this.eventsHtml(s) : ''}`;

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Agent Arena v2 – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
-import { loadConfig } from './config.js';
+import { loadConfig, acquireLock } from './config.js';
 import { openDb } from './db/migrate.js';
 import { createRepo } from './db/repo.js';
 import { createRecorder } from './db/recorder.js';
@@ -26,10 +26,15 @@ import { createRegistry } from './agents/registry.js';
 import { createSessionManager } from './acp/manager.js';
 
 const config = loadConfig();
+// pro Datenordner nur ein Server (sonst schrieben zwei Prozesse in dieselbe DB und beendeten fremde Sessions)
+const lock = acquireLock(config.dataDir);
+if (!lock.ok) {
+  console.error(`\n  Agent Arena läuft bereits mit diesem Datenordner (${config.dataDir}, PID ${lock.pid}).`);
+  console.error(`  Anderer Datenordner:  ARENA_DATA_DIR=/pfad npm start\n`);
+  process.exit(1);
+}
 const db = openDb(config.dbPath);
 const repo = createRepo(db);
-// nach einem Absturz offen gebliebene Sessions beenden (laufende Watcher-Sessions öffnet der Watcher wieder)
-repo.endDangling();
 // Tool-Registry: Standardliste + ~/.agent-arena/agents.json
 const registry = createRegistry({ dataDir: config.dataDir, arenaDir: config.arenaDir });
 const bus = createBus();
@@ -58,6 +63,7 @@ server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n  Port ${config.port} ist schon belegt – läuft Agent Arena bereits? Dann einfach http://${config.host}:${config.port} öffnen.`);
     console.error(`  Beenden:  kill $(lsof -ti tcp:${config.port})   ·   Anderer Port:  PORT=4318 npm start\n`);
+    lock.release();
     process.exit(1);
   }
   throw err;
@@ -67,6 +73,8 @@ await watchers.tick();
 watchers.start();
 
 server.listen(config.port, config.host, () => {
+  // erst jetzt (Port gehört uns): nach Absturz offen gebliebene Sessions beenden – außer den vom Watcher gemeldeten
+  try { repo.endDangling(state.all().map((a) => a.sessionId)); } catch (err) { console.error('[db] endDangling', err.message); }
   const n = state.all().length;
   console.log(`\n  Agent Arena läuft auf  http://${config.host}:${server.address().port}`);
   console.log(`  Quelle: ${config.claudeProjectsDir}  ·  ${n} Agent(en) im Zeitfenster von ${config.windowMin} min`);
@@ -86,6 +94,7 @@ async function shutdown(signal) {
   ws.close();
   server.close();
   try { db.close(); } catch { /* bereits geschlossen */ }
+  lock.release();
   setTimeout(() => process.exit(0), 300).unref();
 }
 process.on('SIGINT', () => shutdown('SIGINT'));

@@ -19,6 +19,8 @@ export function createDefaultWatchers(config) {
 
 // Übernehmen (session/load) nur für Tools, deren Adapter das zuverlässig kann
 const ADOPTABLE = new Set(['claude', 'codex']);
+// Sitzungsdatei einer geschlossenen Arena-Session gilt erst als externe Nutzung, wenn danach (> 5 s) noch etwas passiert
+export const ARENA_GRACE_MS = 5000;
 
 // repo (optional): Session-Ende vermerken, wenn ein Watcher-Hauptagent verschwindet; wieder offen, wenn er zurückkehrt
 export function startWatchers({ state, bus, repo = null, config, watchers = createDefaultWatchers(config), intervalMs = 1500, autoStart = true }) {
@@ -42,9 +44,24 @@ export function startWatchers({ state, bus, repo = null, config, watchers = crea
   function syncWatcher(w) {
     // erst nach dem (asynchronen) Scan ermitteln – eine Übernahme kann währenddessen abgeschlossen sein
     const acpSessions = acpSessionIds();
-    const skip = (a) => a.sessionId && acpSessions.has(a.sessionId);
+    const arenaOwned = new Map(); // sessionId → true, wenn die Datei zu einer (geschlossenen) Arena-Session gehört
+    const ownedByArena = (sid, lastActivity) => {
+      if (!repo?.arenaSessionFor || !sid) return false;
+      if (!arenaOwned.has(sid)) {
+        let r = null;
+        try { r = repo.arenaSessionFor(sid); } catch { /* DB optional */ }
+        // ausblenden, solange keine echte spätere CLI-Nutzung (Aktivität > 5 s nach dem Ende) vorliegt
+        arenaOwned.set(sid, !!r && (r.active || r.endedAt == null || !(lastActivity > r.endedAt + ARENA_GRACE_MS)));
+      }
+      return arenaOwned.get(sid);
+    };
+    const mainActivity = new Map();
+    const all = w.agents();
+    for (const a of all) if (a.kind === 'main' && a.sessionId) mainActivity.set(a.sessionId, a.lastActivity ?? 0);
+    const skip = (a) => !!a.sessionId && (acpSessions.has(a.sessionId)
+      || ownedByArena(a.sessionId, mainActivity.get(a.sessionId) ?? a.lastActivity ?? 0));
     const adoptable = w.adoptable ?? ADOPTABLE.has(w.id);
-    const list = w.agents().filter((a) => !skip(a)).map((a) => ({ ...a, adoptable: adoptable && a.kind === 'main' }));
+    const list = all.filter((a) => !skip(a)).map((a) => ({ ...a, adoptable: adoptable && a.kind === 'main' }));
     const ids = new Set(list.map((a) => a.id));
     const mine = owned.get(w.id);
     for (const a of list) {
@@ -55,7 +72,7 @@ export function startWatchers({ state, bus, repo = null, config, watchers = crea
       if (ids.has(id)) continue;
       const a = state.get(id);
       // verschwunden (nicht von einem ACP-Agenten übernommen) → Session beendet, Ende = letzte Aktivität
-      if (a?.kind === 'main' && a.sessionId && !acpSessions.has(a.sessionId)) {
+      if (a?.kind === 'main' && a.sessionId && !acpSessions.has(a.sessionId) && !arenaOwned.get(a.sessionId)) {
         dbCall(() => repo.endSession?.(a.sessionId, 'ended', a.lastActivity ?? Date.now()));
       }
       state.remove(id);
@@ -63,7 +80,7 @@ export function startWatchers({ state, bus, repo = null, config, watchers = crea
     owned.set(w.id, ids);
     // neue Ereignisse für Recorder/Browser (DB dedupliziert per Id)
     for (const event of w.takeEvents?.() ?? []) {
-      if (event.sessionId && acpSessions.has(event.sessionId)) continue;
+      if (event.sessionId && (acpSessions.has(event.sessionId) || arenaOwned.get(event.sessionId))) continue;
       bus?.emit('event', { event });
     }
   }

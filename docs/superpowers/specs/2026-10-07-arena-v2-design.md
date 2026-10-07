@@ -70,12 +70,13 @@ Alle Quellen (ACP, Watcher, Demo) erzeugen dieselben Objekte:
   tool_calls, permissions, tasks, meetings, meeting_messages`. Ereignisse werden gebündelt (alle 500 ms) geschrieben.
 - **api/ws.js** – Nachrichten (JSON, `{ type, ...}`):
   Client → Server: `session.create, session.prompt, session.cancel, session.adopt, permission.answer, pty.input,
-  pty.resize, task.create|update|assign, meeting.create|message, settings.agents.save|test, history.query`.
+  pty.resize, task.create|update|assign, meeting.create|message, settings.agents.save|test, history.sessions|events|resume`.
   Server → Client: `snapshot, agent.update, event, permission.request, pty.output, task.update, meeting.update,
   error`. Verbindung erfordert das Token (steht in `~/.agent-arena/token`): Browser über das HttpOnly-Cookie
   `arena_token`, das die Startseite setzt (Origin muss Host und Port der Arena entsprechen); andere Clients per erster
   Nachricht `hello { token }`. Sonst Abbruch mit Code 4401.
-- **api/http.js** – statische Dateien, `/vendor/*`, `/api/history/*` (Zeitstrahl, Archiv), `/api/health`.
+- **api/http.js** – statische Dateien, `/vendor/*`, `/api/health`. Verlauf (Zeitstrahl, Archiv) läuft über den WebSocket
+  (`history.sessions`, `history.events`, `history.resume`), nicht über HTTP.
 
 ### Browser
 

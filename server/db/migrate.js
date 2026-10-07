@@ -18,5 +18,6 @@ export function openDb(target) {
   const cols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
   if (!cols.includes('parent_session_id')) db.exec('ALTER TABLE sessions ADD COLUMN parent_session_id TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at)');
+  db.exec('CREATE INDEX IF NOT EXISTS sessions_acp ON sessions(acp_session_id)');
   return db;
 }

@@ -3,7 +3,7 @@
 // der Figuren und schaltet den Store in den Wiedergabemodus; „Live“ kehrt zurück.
 import { svgIcon, toolOf } from '../config.js';
 import { ICON, esc } from './common.js';
-import { reconstruct, markerKind, bundleTools, sessionAt } from '../replay.js';
+import { reconstruct, markerKind, bundleTools, sessionAt, mergeEvents, createScrubGate } from '../replay.js';
 
 export const CLOCK_ICON = 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2';
 const ZOOMS = [15, 30, 60, 90, 180, 360, 720, 1440]; // Fensterbreite in Minuten
@@ -31,7 +31,8 @@ export class Timeline {
     this.loading = null;
     this.dragging = false;
     this.cursorT = null;
-    this.seq = 0;
+    this.gate = createScrubGate(); // verwirft veraltete Scrub-Ergebnisse (auch nach „Live“)
+    this.again = false;
 
     el.innerHTML = `<div class="tl">
       <div class="tl-head">${svgIcon(CLOCK_ICON)}<span class="tl-title">Zeitstrahl</span>
@@ -92,7 +93,7 @@ export class Timeline {
     this.overEl.addEventListener('pointercancel', end);
     this.banner = document.createElement('div');
     this.banner.className = 'pb-banner hidden';
-    this.banner.innerHTML = `${svgIcon(CLOCK_ICON)}<span>Wiedergabe <b></b></span><button class="tl-live" title="Zurück zu Live (Esc)"><i></i>Live</button>`;
+    this.banner.innerHTML = `${svgIcon(CLOCK_ICON)}<span>Wiedergabe <b></b> <em></em></span><button class="tl-live" title="Zurück zu Live (Esc)"><i></i>Live</button>`;
     this.banner.querySelector('button').addEventListener('click', () => this.onLive());
     document.body.appendChild(this.banner);
   }
@@ -132,14 +133,15 @@ export class Timeline {
 
   // ---------------------------------------------------------------- Daten
   async refresh() {
-    if (this.loading) return this.loading;
+    // läuft schon ein Ladevorgang (z. B. Zoom währenddessen): danach erneut laden
+    if (this.loading) { this.again = true; return this.loading; }
     this.render();
     this.loading = (async () => {
       const { from, to } = this.range();
       try {
         const sessions = [];
         for (let offset = 0, page = 0; page < 4; page++, offset += PAGE) {
-          const res = await this.request('history.sessions', { since: from, limit: PAGE, offset });
+          const res = await this.request('history.sessions', { since: from, limit: PAGE, offset, counts: false });
           sessions.push(...res.sessions);
           if (!res.hasMore) break;
         }
@@ -154,6 +156,7 @@ export class Timeline {
         this.loading = null;
       }
       this.render();
+      if (this.again && this.isOpen) { this.again = false; this.refresh(); }
     })();
     return this.loading;
   }
@@ -171,16 +174,20 @@ export class Timeline {
     if (!c) { c = { events: [], ids: new Set(), agents: [], loadedTo: (s.startedAt ?? 0) - 1, complete: false }; this.cache.set(s.id, c); }
     if (c.complete || c.loadedTo >= to) return c;
     const upto = s.endedAt != null ? Math.min(to, s.endedAt + SETTLE_MS) : to;
-    const fresh = [];
-    for (let offset = 0, page = 0; page < MAX_PAGES; page++, offset += PAGE) {
+    let truncated = false;
+    let lastT = null;
+    for (let offset = 0, page = 0; ; page++, offset += PAGE) {
+      if (page >= MAX_PAGES) { truncated = true; break; }
       const res = await this.request('history.events', { sessionId: s.id, from: Math.max(0, c.loadedTo), to: upto, limit: PAGE, offset });
       if (res.agents?.length) c.agents = res.agents;
-      for (const e of res.events) if (!c.ids.has(e.id)) { c.ids.add(e.id); fresh.push(e); }
+      mergeEvents(c, res.events);
+      if (res.events.length) lastT = res.events[res.events.length - 1].t;
       if (!res.hasMore) break;
     }
-    if (fresh.length) {
-      c.events.push(...fresh);
-      c.events.sort((x, y) => x.t - y.t);
+    if (truncated) {
+      // Seitenlimit erreicht: nur bis zum letzten geladenen Ereignis als geladen markieren
+      if (lastT != null) c.loadedTo = Math.max(c.loadedTo, lastT);
+      return c;
     }
     // die letzten Sekunden später erneut abfragen (gebündeltes Schreiben)
     c.loadedTo = Math.max(c.loadedTo, upto - SETTLE_MS);
@@ -205,26 +212,41 @@ export class Timeline {
       return;
     }
     this.setCursor(t);
-    const seq = ++this.seq;
+    const token = this.gate.begin();
     // während des Ziehens gedrosselt rekonstruieren
     if (!final && this.lastReplay && performance.now() - this.lastReplay < 90) {
       clearTimeout(this.pendingReplay);
-      this.pendingReplay = setTimeout(() => this.scrubTo(t, true), 100);
+      this.pendingReplay = setTimeout(() => { this.pendingReplay = null; this.scrubTo(t, true); }, 100);
       return;
     }
     this.lastReplay = performance.now();
     const active = this.sessions.filter((s) => sessionAt(s, t));
+    this.pending = token;
     try {
       await this.ensureAll(active, t);
     } catch { /* Teilweise geladen – mit dem Vorhandenen weiter */ }
-    if (seq !== this.seq) return; // inzwischen weitergezogen
+    if (this.pending === token) this.pending = null;
+    if (!this.gate.valid(token)) return; // inzwischen weitergezogen oder zurück zu Live
     this.store.setPlaybackAgents(t, reconstruct(active, this.cache, t));
   }
 
   // Schritt in der Wiedergabe (Pfeiltasten)
   step(ms) {
-    const base = this.store.state.playback?.t ?? this.range().to;
-    this.scrubTo(base + ms, true);
+    const { from, to } = this.range();
+    const base = this.store.state.playback?.t ?? to;
+    this.scrubTo(Math.max(from, Math.min(to, base + ms)), true);
+  }
+
+  // laufende/geplante Wiedergabe-Schritte verwerfen (vor der Rückkehr zu Live)
+  // Scrub läuft noch (Ereignisse werden geladen) oder ist geplant
+  get busy() { return this.pending != null || this.pendingReplay != null || this.dragging; }
+
+  cancel() {
+    this.pending = null;
+    this.gate.cancel();
+    clearTimeout(this.pendingReplay);
+    this.pendingReplay = null;
+    this.dragging = false;
   }
 
   setCursor(t) {
@@ -252,9 +274,14 @@ export class Timeline {
   // Store-Wechsel Live ⇄ Wiedergabe
   onPlayback(pb) {
     const on = !!pb;
+    if (!on) this.cancel();
     this.liveBtn.classList.toggle('hidden', !on);
     this.banner.classList.toggle('hidden', !on || pb.t == null);
-    if (on && pb.t != null) this.banner.querySelector('b').textContent = fmtClock(pb.t);
+    if (on && pb.t != null) {
+      const n = this.store.heldPermissions?.() ?? 0;
+      this.banner.querySelector('b').textContent = fmtClock(pb.t);
+      this.banner.querySelector('em').textContent = n ? `· ${n} ${n === 1 ? 'Rückfrage wartet' : 'Rückfragen warten'}` : '';
+    }
     if (!on) this.cursorT = null;
     this.positionCursor();
   }

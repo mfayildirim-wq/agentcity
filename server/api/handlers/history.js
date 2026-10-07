@@ -29,7 +29,8 @@ export default {
     const repo = needRepo(ctx);
     const { limit, offset } = page(msg);
     // eine Zeile mehr holen, um hasMore zu bestimmen
-    const rows = repo.history.sessions({ limit: limit + 1, offset, ended: !!msg.ended, since: num(msg.since) });
+    // counts: false spart die Zählung der Ereignisse (Zeitstrahl)
+    const rows = repo.history.sessions({ limit: limit + 1, offset, ended: !!msg.ended, since: num(msg.since), withCounts: msg.counts !== false });
     const hasMore = rows.length > limit;
     const sessions = rows.slice(0, limit).map((s) => ({ ...s, resumable: isResumable(s, ctx) }));
     return { sessions, hasMore };
@@ -41,7 +42,8 @@ export default {
     const { limit, offset } = page(msg);
     const rows = repo.history.events(msg.sessionId, { from: num(msg.from) ?? 0, to: num(msg.to) ?? Number.MAX_SAFE_INTEGER, limit: limit + 1, offset });
     const hasMore = rows.length > limit;
-    return { events: rows.slice(0, limit), agents: repo.history.agents?.(msg.sessionId) ?? [], hasMore };
+    // Agenten der Session nur mit der ersten Seite
+    return { events: rows.slice(0, limit), ...(offset === 0 ? { agents: repo.history.agents?.(msg.sessionId) ?? [] } : {}), hasMore };
   },
 
   async 'history.resume'(ctx, msg) {

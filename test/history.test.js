@@ -234,3 +234,93 @@ test('Fortsetzen ersetzt einen Watcher-Agenten derselben (Arena-)Session statt s
   assert.equal(repo.getSession(state.get(id).sessionId).parent_session_id, oldSession);
   fs.rmSync(cwd, { recursive: true, force: true });
 });
+
+test('Fortsetzen: Fehlerpfad beendet die neue Zeile mit error, blockiert kein weiteres Fortsetzen; nur beendete Sessions', async () => {
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-hist-')));
+  const bus = createBus();
+  const state = createState({ bus });
+  const repo = setup();
+  const tools = [
+    { id: 'fake', name: 'Fake', command: 'node', args: [FAKE], color: '#888888' },
+    { id: 'hang', name: 'Hang', command: 'node', args: [FAKE], env: { FAKE_HANG_INIT: '1' }, color: '#888888' },
+  ];
+  const registry = createRegistry({ tools });
+  manager = createSessionManager({ state, bus, repo, registry, startTimeoutMs: 400 });
+  repo.createSession({ id: 'laeuft', toolId: 'fake', acpSessionId: 'x', projectId: repo.upsertProject({ cwd, name: 'p' }), startedAt: 1 });
+  await assert.rejects(() => manager.resume('laeuft'), /läuft noch/);
+  // beendete Session eines Tools, dessen Start hängt
+  repo.createSession({ id: 'alt', toolId: 'hang', acpSessionId: 'acp-alt', projectId: repo.upsertProject({ cwd, name: 'p' }), startedAt: 2 });
+  repo.endSession('alt', 'done', 3);
+  repo.meta.set('loadSession:hang', '1');
+  await assert.rejects(() => manager.resume('alt'), /konnte nicht starten/);
+  const child = repo.history.sessions().find((x) => x.parentSessionId === 'alt');
+  assert.equal(child.status, 'error');
+  assert.ok(child.endedAt);
+  // der fehlgeschlagene Agent (Status error) blockiert ein weiteres Fortsetzen nicht
+  assert.ok(state.all().some((a) => a.status === 'error' && a.acpSessionId === 'acp-alt'));
+  await assert.rejects(() => manager.resume('alt'), /konnte nicht starten/);
+  for (const a of state.all()) if (a.source === 'acp') await manager.close(a.id).catch(() => {});
+  fs.rmSync(cwd, { recursive: true, force: true });
+});
+
+test('endDangling lässt übergebene (laufende) Sessions offen', () => {
+  const repo = setup();
+  repo.createSession({ id: 'tot', toolId: 'claude', startedAt: 10 });
+  repo.createSession({ id: 'aktiv', toolId: 'claude', source: 'watch', startedAt: 20 });
+  assert.equal(repo.endDangling(['aktiv', null]), 1);
+  assert.equal(repo.getSession('tot').status, 'ended');
+  assert.equal(repo.getSession('aktiv').ended_at, null);
+});
+
+test('Watcher blendet Sitzungsdateien geschlossener Arena-Sessions aus (außer spätere CLI-Nutzung > 5 s)', async () => {
+  const bus = createBus();
+  const state = createState({ bus });
+  const repo = setup();
+  const events = [];
+  bus.on('event', ({ event }) => events.push(event));
+  repo.createSession({ id: 'arena-1', toolId: 'claude', acpSessionId: 'ext-1', source: 'acp', startedAt: 1000 });
+  repo.endSession('arena-1', 'done', 5000);
+  const mk = (lastActivity) => {
+    const a = createAgent({ id: 'w:claude:ext-1', kind: 'main', toolId: 'claude', sessionId: 'ext-1', project: 'p', source: 'watch' });
+    a.lastActivity = lastActivity;
+    return a;
+  };
+  let list = [mk(5800)];
+  let fresh = [{ id: 'e1', agentId: 'w:claude:ext-1', sessionId: 'ext-1', t: 5800, kind: 'text' }];
+  const watcher = { id: 'claude', scan: async () => {}, agents: () => list, takeEvents: () => { const f = fresh; fresh = []; return f; } };
+  const w = startWatchers({ state, bus, repo, config: {}, watchers: [watcher], autoStart: false });
+  await w.tick();
+  assert.equal(state.get('w:claude:ext-1'), undefined, 'Aktivität nur kurz nach dem Ende → ausgeblendet');
+  assert.equal(events.length, 0, 'keine Ereignisse unter der Tool-Id');
+  assert.equal(repo.getSession('ext-1'), undefined, 'keine zweite Session-Zeile');
+  // echte spätere CLI-Nutzung
+  list = [mk(5000 + 60_000)];
+  await w.tick();
+  assert.ok(state.get('w:claude:ext-1'));
+  // laufende Arena-Session → ausblenden
+  repo.createSession({ id: 'arena-2', toolId: 'claude', acpSessionId: 'ext-2', source: 'acp', startedAt: 1 });
+  const b = createAgent({ id: 'w:claude:ext-2', kind: 'main', toolId: 'claude', sessionId: 'ext-2', project: 'p', source: 'watch' });
+  b.lastActivity = Date.now();
+  list = [b];
+  await w.tick();
+  assert.equal(state.get('w:claude:ext-2'), undefined);
+  w.stop();
+});
+
+test('Sperrdatei: zweiter Server mit demselben Datenordner wird abgewiesen, tote PID übernommen', async () => {
+  const { acquireLock } = await import('../server/config.js');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-lock-'));
+  const a = acquireLock(dir);
+  assert.equal(a.ok, true);
+  // anderer, lebender Prozess (dieser Test-Prozess unter fremder PID-Annahme): eigene PID gilt nicht als fremd
+  const b = acquireLock(dir, process.pid + 1_000_000);
+  assert.equal(b.ok, false);
+  assert.equal(b.pid, process.pid);
+  a.release();
+  fs.writeFileSync(path.join(dir, 'server.lock'), '999999999');
+  const c = acquireLock(dir);
+  assert.equal(c.ok, true);
+  c.release();
+  assert.equal(fs.existsSync(path.join(dir, 'server.lock')), false);
+  fs.rmSync(dir, { recursive: true, force: true });
+});

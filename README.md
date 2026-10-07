@@ -13,7 +13,8 @@ npm install
 npm start          # → http://127.0.0.1:4317 (Node ≥ 22.13)
 ```
 
-Port belegt? `PORT=4318 npm start`. Demo ohne Agenten: http://127.0.0.1:4317/?demo (oder ▶-Knopf oben rechts).
+Port belegt? `PORT=4318 npm start`. Pro Datenordner läuft nur ein Server; einen zweiten startest du mit eigenem
+`ARENA_DATA_DIR`. Demo ohne Agenten: http://127.0.0.1:4317/?demo (oder ▶-Knopf oben rechts).
 
 Neue Session: „+“ (oder `N`) → Tool wählen, Projektordner (zuletzt verwendete oben), Modus *Bestätigen* (Rückfragen
 im Browser) oder *Auto* (Rückfragen automatisch freigeben), optional Titel. Die Steuerung läuft über das
@@ -93,6 +94,8 @@ erscheinen schreibgeschützt im Reiter „Terminalausgaben“ der Detailkarte.
   ziehen) führt zurück; ←/→ springen 10 s (mit Umschalt 1 min).
 - **Archiv** (Kasten-Icon oder `A`): beendete Sessions mit Projekt, Tool-Farbe, Datum, Dauer und Titel. Klick zeigt
   die Ereignisse, „Fortsetzen“ setzt sie fort (siehe oben).
+- Eine geschlossene Arena-Session erscheint nicht zusätzlich als externe Session (der Watcher blendet ihre
+  Sitzungsdatei aus, bis sie mehr als 5 s nach dem Ende wieder benutzt wird).
 - Eine Session endet beim Schließen (`done`), wenn der Agent-Prozess abbricht (`error`), wenn eine beobachtete
   externe Session aus dem Zeitfenster fällt (`ended`) und beim Beenden des Servers (`ended`).
 
@@ -119,6 +122,7 @@ Alles liegt in `~/.agent-arena/` (Ordner Modus 0700):
 |---------------|--------------------------------------------------------------------------------|
 | `token`       | Zugangstoken (32 Hex-Zeichen, Modus 0600), wird beim ersten Start erzeugt       |
 | `agents.json` | eigene bzw. geänderte Agenten-Tools                                            |
+| `server.lock` | PID des laufenden Servers – pro Datenordner läuft nur ein Server (zweiter Start bricht ab; die Sperre eines beendeten Prozesses wird übernommen) |
 | `arena.db`    | SQLite (`node:sqlite`): Projekte, Sessions, Agenten, Ereignisse, Nachrichten, Berechtigungen, Aufgaben, Besprechungen |
 
 Ereignisse werden gebündelt (alle 500 ms) geschrieben; Diff-Texte werden nicht gespeichert (nur Pfad und

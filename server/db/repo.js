@@ -73,9 +73,23 @@ export function createRepo(db) {
     .run(id).changes > 0;
 
   // Beim Start: Sessions ohne Ende (Absturz, harter Abbruch) gelten als beendet – Ende = letztes Ereignis
-  const endDangling = () => q(`UPDATE sessions SET status = 'ended', ended_at = MAX(started_at,
-      COALESCE((SELECT MAX(e.t) FROM events e WHERE e.session_id = sessions.id), started_at))
-    WHERE ended_at IS NULL`).run().changes;
+  // keep: Session-Ids, die gerade laufen (z. B. vom Watcher bereits gemeldet) – bleiben offen
+  function endDangling(keep = []) {
+    const skip = [...new Set(keep.filter(Boolean))];
+    return q(`UPDATE sessions SET status = 'ended', ended_at = MAX(started_at,
+        COALESCE((SELECT MAX(e.t) FROM events e WHERE e.session_id = sessions.id), started_at))
+      WHERE ended_at IS NULL AND id NOT IN (SELECT value FROM json_each(?))`).run(JSON.stringify(skip)).changes;
+  }
+
+  // Arena-Sessions (source acp) mit dieser ACP-/Tool-Session-Id: { active, endedAt } oder null.
+  // Der Watcher blendet deren Sitzungsdatei aus (sonst erschiene eine geschlossene Arena-Session als externe).
+  function arenaSessionFor(acpSessionId) {
+    if (!acpSessionId) return null;
+    const r = q(`SELECT COUNT(*) AS n, SUM(ended_at IS NULL) AS open, MAX(ended_at) AS ended FROM sessions
+      WHERE acp_session_id = ? AND source = 'acp'`).get(acpSessionId);
+    if (!r?.n) return null;
+    return { active: r.open > 0, endedAt: r.ended ?? null };
+  }
 
   // kleine Schlüssel/Wert-Ablage (Tabelle meta)
   const meta = {
@@ -213,8 +227,8 @@ export function createRepo(db) {
       const args = [];
       if (o.ended) where.push('s.ended_at IS NOT NULL');
       if (o.since != null) { where.push('(s.ended_at IS NULL OR s.ended_at >= ?)'); args.push(o.since); }
-      return q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd,
-                  (SELECT COUNT(*) FROM events e WHERE e.session_id = s.id) AS event_count
+      const count = o.withCounts === false ? 'NULL' : '(SELECT COUNT(*) FROM events e WHERE e.session_id = s.id)';
+      return q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd, ${count} AS event_count
                 FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
                 ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
                 ORDER BY s.started_at DESC, s.rowid DESC LIMIT ? OFFSET ?`).all(...args, o.limit ?? 50, o.offset ?? 0)
@@ -242,7 +256,7 @@ export function createRepo(db) {
 
   return {
     db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, setSessionAcpId, setSessionMode, recentProjects,
-    getSession, endSession, reopenSession, endDangling, meta,
+    getSession, endSession, reopenSession, endDangling, arenaSessionFor, meta,
     upsertAgent, getAgent, insertEvents, insertMessage, messagesForAgent, insertPermission, resolvePermission, tasks, meetings, history,
   };
 }

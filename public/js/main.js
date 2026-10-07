@@ -129,8 +129,15 @@ board.onToggle = (on) => $('btn-board').classList.toggle('on', on);
 // ---------------------------------------------------------------- Verlauf: Zeitstrahl (Wiedergabe) und Archiv
 // zurück zu Live: Live-Zustand wiederherstellen, gepufferte Nachrichten anwenden, frischen Snapshot holen
 function goLive() {
+  timeline.cancel(); // laufende Scrub-Schritte dürfen danach nichts mehr anwenden
   if (!store.state.playback) return;
-  store.exitPlayback();
+  const lost = store.exitPlayback();
+  // Puffer übergelaufen: Chat- und Terminal-Verlauf neu laden
+  if (lost) {
+    historyLoaded.clear();
+    termsLoaded.clear();
+    if (store.state.selected) setTimeout(() => loadChatHistory(store.state.selected), 50);
+  }
   conn.resync();
 }
 const timeline = new Timeline($('timeline'), { store, request: quiet, onLive: goLive, toast });
@@ -151,6 +158,7 @@ archive.onToggle = (on) => {
 const toggleTimeline = () => {
   if (!liveOnly()) return;
   timeline.toggle();
+  if (timeline.isOpen) layoutTimeline();
   $('btn-timeline').classList.toggle('on', timeline.isOpen);
 };
 const toggleArchive = () => {
@@ -164,8 +172,9 @@ function layoutTimeline() {
   document.body.style.setProperty('--tl-bottom', `${12 + (h ? h + 8 : 0)}px`);
 }
 if (typeof ResizeObserver === 'function') {
-  const ro = new ResizeObserver(layoutTimeline);
-  for (const id of ['chat', 'meeting']) { ro.observe($(id)); if ($(id).firstElementChild) ro.observe($(id).firstElementChild); }
+  const ro = new ResizeObserver(() => { if (timeline.isOpen) layoutTimeline(); });
+  ro.observe($('chat'));
+  ro.observe($('meeting'));
 }
 
 // Figur auf ein Meeting-Pad gezogen: zur geöffneten (bzw. einzigen offenen) Besprechung hinzufügen, sonst neue
@@ -279,7 +288,7 @@ store.subscribe((s, changes) => {
   }
   if (changes.has('tasks') || changes.has('agents') || changes.has('selected')) board.render();
   if (changes.has('permissions') || changes.has('agents')) perms.render(s.permissions, s.agents);
-  if (timeline.isOpen) layoutTimeline();
+  if (timeline.isOpen && (changes.has('selected') || changes.has('meetingView') || changes.has('playback') || changes.has('meetings'))) layoutTimeline();
   if (changes.has('connection')) {
     liveEl.dataset.state = s.connection;
     liveEl.title = { live: 'Live verbunden', demo: 'Demo-Modus', off: 'Keine Verbindung' }[s.connection];
@@ -385,7 +394,9 @@ window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea, [contenteditable]')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'Escape') {
-    if (store.state.playback) goLive();
+    // laufenden Scrub (Daten werden noch geladen) ebenfalls verwerfen
+    const scrubbing = timeline.isOpen && timeline.busy;
+    if (store.state.playback || scrubbing) goLive();
     else if (meetingPicker.isOpen) meetingPicker.close();
     else if (settings.isOpen) settings.close(); else if (newSession.isOpen) newSession.close();
     else if (store.state.meetingView) store.setMeetingView(null);

@@ -116,3 +116,68 @@ test('Subagent ohne gespeichertes Ende verschwindet nach längerer Ruhe', () => 
   assert.ok(reconstruct([s], d, 300).some((a) => a.id === 'sub'));
   assert.equal(reconstruct([s], d, 200 + 3 * 60_000 + 1).some((a) => a.id === 'sub'), false);
 });
+
+test('Store: gepufferte agent.remove/permission.resolved, Rückfragen-Zähler, pty sofort', async () => {
+  const { createStore } = await import('../public/js/store.js');
+  const store = createStore();
+  store.applySnapshot({ now: Date.now(), agents: [{ id: 'x', kind: 'main', project: 'p' }, { id: 'y', kind: 'main', project: 'p' }], permissions: [] });
+  store.upsertTerminal({ ptyId: 'p1', agentId: 'x', kind: 'agent' });
+  store.enterPlayback();
+  store.setPlaybackAgents(1, []);
+  store.dispatch({ type: 'agent.remove', agentId: 'y' });
+  store.dispatch({ type: 'permission.request', permission: { id: 'perm', agentId: 'x', t: 1, options: [] } });
+  assert.equal(store.heldPermissions(), 1);
+  store.dispatch({ type: 'pty.output', ptyId: 'p1', data: 'abc' });
+  assert.equal(store.state.terminals.get('p1').data, 'abc', 'Terminal-Ausgabe nicht gepuffert');
+  store.dispatch({ type: 'permission.resolved', permissionId: 'perm' });
+  assert.equal(store.heldPermissions(), 0);
+  store.exitPlayback();
+  assert.deepEqual([...store.state.agents.keys()], ['x']);
+  assert.equal(store.state.permissions.size, 0);
+});
+
+test('Store: Überlauf verwirft den Puffer, beim Verlassen wird nichts nachgespielt', async () => {
+  const { createStore } = await import('../public/js/store.js');
+  const store = createStore({ maxBuffer: 3 });
+  store.applySnapshot({ now: Date.now(), agents: [{ id: 'x', kind: 'main', project: 'p' }] });
+  store.applyChatChunk({ agentId: 'x', messageId: 'm0', role: 'agent', text: 'alt' });
+  store.enterPlayback();
+  for (let i = 0; i < 5; i++) store.dispatch({ type: 'chat.chunk', agentId: 'x', messageId: `m${i + 1}`, role: 'agent', text: 'neu' });
+  assert.equal(store.isOverflowed(), true);
+  assert.equal(store.bufferedCount(), 0);
+  assert.equal(store.exitPlayback(), true);
+  assert.deepEqual(store.state.chats, {}, 'Chat wird neu geladen statt lückenhaft ergänzt');
+  assert.ok(store.state.agents.has('x'));
+});
+
+test('Live während laufendem Scrub: veraltetes Ergebnis wird verworfen (Gate)', async () => {
+  const { createStore } = await import('../public/js/store.js');
+  const { createScrubGate } = await import('../public/js/replay.js');
+  const store = createStore();
+  store.applySnapshot({ now: Date.now(), agents: [{ id: 'live', kind: 'main', project: 'p' }] });
+  const gate = createScrubGate();
+  let release;
+  const loading = new Promise((r) => { release = r; });
+  // Scrub beginnt, lädt noch …
+  const scrub = (async () => {
+    const token = gate.begin();
+    await loading;
+    if (gate.valid(token)) store.setPlaybackAgents(5, [{ id: 'alt', kind: 'main', project: 'p' }]);
+  })();
+  store.enterPlayback();
+  // … Nutzer drückt Live
+  gate.cancel();
+  store.exitPlayback();
+  release();
+  await scrub;
+  assert.equal(store.state.playback, null);
+  assert.deepEqual([...store.state.agents.keys()], ['live']);
+});
+
+test('mergeEvents: Duplikate verworfen, sortiert nach (t, Eintreffen)', async () => {
+  const { mergeEvents } = await import('../public/js/replay.js');
+  const c = {};
+  assert.equal(mergeEvents(c, [{ id: 'a', t: 2 }, { id: 'b', t: 1 }, { id: 'c', t: 2 }]), 3);
+  assert.equal(mergeEvents(c, [{ id: 'a', t: 2 }, { id: 'd', t: 2 }]), 1);
+  assert.deepEqual(c.events.map((e) => e.id), ['b', 'a', 'c', 'd']);
+});

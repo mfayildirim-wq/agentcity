@@ -43,3 +43,24 @@ export function loadConfig() {
     dbPath: DB_PATH, token: loadToken(),
   };
 }
+
+// Sperrdatei <dir>/server.lock mit PID: { ok, pid, release() }. Lebt der eingetragene Prozess nicht mehr, wird sie übernommen.
+export function acquireLock(dir = DATA_DIR, pid = process.pid) {
+  ensureDataDir(dir);
+  const file = path.join(dir, 'server.lock');
+  const alive = (p) => {
+    try { process.kill(p, 0); return true; } catch (err) { return err.code === 'EPERM'; }
+  };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      fs.writeFileSync(file, String(pid), { flag: 'wx', mode: 0o600 });
+      return { ok: true, pid, release: () => { try { if (fs.readFileSync(file, 'utf8').trim() === String(pid)) fs.unlinkSync(file); } catch { /* weg */ } } };
+    } catch (err) {
+      if (err.code !== 'EEXIST') throw err;
+      const other = Number(fs.readFileSync(file, 'utf8').trim());
+      if (other && other !== pid && alive(other)) return { ok: false, pid: other, release: () => {} };
+      try { fs.unlinkSync(file); } catch { /* bereits entfernt */ }
+    }
+  }
+  return { ok: false, pid: null, release: () => {} };
+}

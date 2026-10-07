@@ -5,7 +5,7 @@ const MAX_DIFFS = 60;
 const MAX_TERM_DATA = 64 * 1024; // wie der Ringpuffer des Servers
 const MAX_BUFFER = 50_000; // gepufferte Live-Nachrichten während der Wiedergabe
 
-export function createStore() {
+export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
   const state = {
     agents: new Map(),
     tasks: new Map(),
@@ -25,6 +25,7 @@ export function createStore() {
   let live = null; // { agents, selected }
   let buffer = [];
   let overflow = false;
+  const heldPerms = new Set(); // in der Wiedergabe eingegangene, noch offene Rückfragen (Hinweis im Banner)
   const subs = new Set();
   const ptySubs = new Set(); // Terminal-Ausgabe geht direkt an die xterm-Ansichten (ohne Neuzeichnen)
   let changes = new Set();
@@ -245,8 +246,12 @@ export function createStore() {
   }
 
   // ---------------------------------------------------------------- Wiedergabe
+  // Überlauf: Puffer verwerfen und nichts mehr sammeln – beim Verlassen kommt ein frischer Snapshot
   function hold(msg) {
-    if (buffer.length >= MAX_BUFFER) { overflow = true; buffer.shift(); }
+    if (msg.type === 'permission.request' && msg.permission?.id) { heldPerms.add(msg.permission.id); changed('playback'); }
+    if (msg.type === 'permission.resolved' && heldPerms.delete(msg.permissionId)) changed('playback');
+    if (overflow) return;
+    if (buffer.length >= maxBuffer) { overflow = true; buffer = []; return; }
     buffer.push(msg);
   }
 
@@ -256,6 +261,7 @@ export function createStore() {
     live = { agents: state.agents, selected: state.selected };
     buffer = [];
     overflow = false;
+    heldPerms.clear();
     state.playback = { t: null };
     changed('playback');
     return true;
@@ -281,8 +287,10 @@ export function createStore() {
     live = null;
     buffer = [];
     overflow = false;
+    heldPerms.clear();
     state.playback = null;
-    for (const msg of held) dispatch(msg);
+    if (lost) state.chats = {}; // Lücke im Chat – Verlauf wird neu geladen (chat.history), Snapshot folgt
+    else for (const msg of held) dispatch(msg);
     // in der Wiedergabe gewählte Figur behalten, wenn sie live existiert, sonst die vorherige Auswahl
     if (!state.selected || !state.agents.has(state.selected)) select(sel && state.agents.has(sel) ? sel : null);
     changed('agents'); changed('playback'); changed('permissions'); changed('chats');
@@ -290,10 +298,13 @@ export function createStore() {
   }
 
   const bufferedCount = () => buffer.length;
+  const heldPermissions = () => heldPerms.size;
+  const isOverflowed = () => overflow;
 
   // Server-Nachricht → passende apply-Funktion (in der Wiedergabe gepuffert)
   function dispatch(msg) {
-    if (state.playback) { hold(msg); return true; }
+    // Terminal-Ausgabe geht weiter direkt an die xterm-Ansichten (Puffer wäre unnötig groß)
+    if (state.playback && msg.type !== 'pty.output' && msg.type !== 'pty.exit') { hold(msg); return true; }
     switch (msg.type) {
       case 'snapshot': applySnapshot(msg); return true;
       case 'agent.update': applyAgentUpdate(msg.agent); return true;
@@ -319,6 +330,6 @@ export function createStore() {
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
     applyPermission, applyPermissionResolved, applyTask, applyTaskRemove, applyMeeting, applyMeetingMessage, setMeetingView, openMeetings, applyChatHistory, applyTools, select, setConnection,
     applyTerminalList, applyPtyOutput, applyPtyExit, upsertTerminal, onPty, terminalsOf,
-    enterPlayback, setPlaybackAgents, exitPlayback, bufferedCount,
+    enterPlayback, setPlaybackAgents, exitPlayback, bufferedCount, heldPermissions, isOverflowed,
   };
 }

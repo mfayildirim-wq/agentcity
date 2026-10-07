@@ -92,7 +92,9 @@ export function reconstruct(sessions, data, t) {
     const rows = d.agents ?? [];
     const project = s.project || basename(s.cwd) || 'Projekt';
     const mainRow = rows.find((r) => r.kind === 'main');
-    const mainId = mainRow?.id ?? d.events.find((e) => e.agentId)?.agentId ?? `h:${s.id}`;
+    const subIds = new Set(rows.filter((r) => r.kind === 'sub').map((r) => r.id));
+    // Ersatz ohne Agentenzeile: erstes Ereignis, das keinem Subagenten gehört
+    const mainId = mainRow?.id ?? d.events.find((e) => e.agentId && !subIds.has(e.agentId))?.agentId ?? `h:${s.id}`;
     const common = { toolId: s.toolId, sessionId: s.id, acpSessionId: s.acpSessionId ?? null, project, cwd: s.cwd ?? null,
       source: s.source ?? 'acp', controllable: false, adoptable: false, replay: true, tokens: { input: 0, output: 0, cache: 0 } };
     const agents = new Map();
@@ -114,8 +116,7 @@ export function reconstruct(sessions, data, t) {
     for (const a of agents.values()) {
       if (a.kind === 'sub') {
         // Subagent erst ab Start, nach dem Ende kurz „fertig“, danach weg
-        const seen = a.events.length > 0 || (a.startedAt ?? Infinity) <= t;
-        if (!seen || (a.startedAt ?? 0) > t) continue;
+        if ((a.startedAt ?? 0) > t && !a.events.length) continue; // noch nicht gestartet
         if (a.endedAt != null && a.endedAt <= t) {
           if (t - a.endedAt > SUB_LINGER_MS) continue;
           Object.assign(a, { status: 'done', tool: null, category: null, detail: null });
@@ -144,4 +145,31 @@ export function bundleTools(events, from, bucketMs) {
     if (b) { b.count += 1; if (b.labels.length < 4) b.labels.push(e.tool ?? e.label ?? ''); } else buckets.set(k, { t: from + k * bucketMs + bucketMs / 2, count: 1, labels: [e.tool ?? e.label ?? ''] });
   }
   return [...buckets.values()].sort((x, y) => x.t - y.t);
+}
+
+// Neue Ereignisse (Server-Reihenfolge) in den Cache einer Session übernehmen: Duplikate per Id verworfen,
+// sortiert nach (t, Reihenfolge des Eintreffens). Rückgabe: Anzahl neuer Ereignisse.
+export function mergeEvents(c, events) {
+  c.ids ??= new Set();
+  c.events ??= [];
+  c.order ??= 0;
+  let n = 0;
+  for (const e of events) {
+    if (c.ids.has(e.id)) continue;
+    c.ids.add(e.id);
+    c.events.push({ ...e, _o: c.order++ });
+    n += 1;
+  }
+  if (n) c.events.sort((x, y) => x.t - y.t || x._o - y._o);
+  return n;
+}
+
+// Scrub-Gate: verwirft Ergebnisse älterer Scrub-Vorgänge und solche nach „Live“ (cancel)
+export function createScrubGate() {
+  let seq = 0;
+  return {
+    begin: () => ++seq,
+    valid: (token) => token === seq,
+    cancel: () => { seq += 1; },
+  };
 }
