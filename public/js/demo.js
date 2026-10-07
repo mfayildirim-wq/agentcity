@@ -20,20 +20,20 @@ const SUB_TYPES = [
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 export class Demo {
-  constructor(onSnapshot) {
-    this.onSnapshot = onSnapshot;
+  constructor(store) {
+    this.store = store;
     this.agents = new Map();
     this.n = 0;
     const now = Date.now();
     this.addMain('restaurant-app', 'Bestellungen in Echtzeit synchronisieren', now - 22 * 60e3);
     this.addMain('agent-arena', '3D-Arena für Claude-Code-Agenten', now - 8 * 60e3);
-    this.addMain('ai-trade-app', 'Backtesting-Dashboard', now - 41 * 60e3, 'waiting');
+    this.addMain('ai-trade-app', 'Backtesting-Dashboard', now - 41 * 60e3, 'waiting_user');
   }
 
   addMain(project, title, startedAt, status = 'thinking') {
-    const key = `m:demo-${++this.n}`;
-    this.agents.set(key, {
-      key, kind: 'main', sessionId: key, parentKey: null, project, cwd: `~/myProjects/${project}`,
+    const id = `m:demo-${++this.n}`;
+    this.agents.set(id, {
+      id, kind: 'main', sessionId: id, parentId: null, toolId: 'claude', source: 'demo', controllable: false, project, cwd: `~/myProjects/${project}`,
       title, description: null, agentType: null, model: 'claude-opus-5-5',
       status, tool: null, category: null, detail: null,
       lastText: 'Ich schaue mir zuerst die bestehende Struktur an und lege dann los.',
@@ -45,9 +45,9 @@ export class Demo {
 
   spawnSub(parent) {
     const [type, desc] = pick(SUB_TYPES);
-    const key = `s:demo-${++this.n}`;
-    this.agents.set(key, {
-      key, kind: 'sub', sessionId: parent.sessionId, parentKey: parent.key, project: parent.project, cwd: parent.cwd,
+    const id = `s:demo-${++this.n}`;
+    this.agents.set(id, {
+      id, kind: 'sub', sessionId: parent.sessionId, parentId: parent.id, toolId: 'claude', source: 'demo', controllable: false, project: parent.project, cwd: parent.cwd,
       title: null, description: desc, agentType: type, model: type === 'Explore' ? 'claude-haiku-4-5' : 'claude-sonnet-5-5',
       status: 'thinking', tool: null, category: null, detail: null, lastText: null, lastPrompt: null,
       lastActivity: Date.now(), startedAt: Date.now(), tokens: { input: 0, output: 0, cache: 0 }, toolCount: 0, events: [],
@@ -67,12 +67,12 @@ export class Demo {
       if (now < a.nextAt) continue;
       a.nextAt = now + 2200 + Math.random() * 3800;
       a.lastActivity = now;
-      if (a.kind === 'sub' && a.status === 'done') { this.agents.delete(a.key); continue; }
-      if (a.kind === 'main' && a.status === 'waiting') {
+      if (a.kind === 'sub' && a.status === 'done') { this.agents.delete(a.id); continue; }
+      if (a.kind === 'main' && a.status === 'waiting_user') {
         if (Math.random() < 0.25) { a.status = 'thinking'; this.event(a, { kind: 'prompt', label: 'ok weiter, sieht gut aus' }); }
         continue;
       }
-      const subs = [...this.agents.values()].filter((s) => s.parentKey === a.key && s.status !== 'done').length;
+      const subs = [...this.agents.values()].filter((s) => s.parentId === a.id && s.status !== 'done').length;
       const r = Math.random();
       if (a.kind === 'sub' && --a.life <= 0) {
         a.status = 'done'; a.tool = a.category = a.detail = null;
@@ -84,7 +84,7 @@ export class Demo {
         this.spawnSub(a);
         if (Math.random() < 0.5) this.spawnSub(a);
       } else if (a.kind === 'main' && r < 0.2) {
-        a.status = 'waiting'; a.tool = a.category = a.detail = null;
+        a.status = 'waiting_user'; a.tool = a.category = a.detail = null;
         a.lastText = 'Fertig. Soll ich auch die Tests ergänzen?';
         this.event(a, { kind: 'text', label: a.lastText });
       } else if (r < 0.38) {
@@ -104,7 +104,7 @@ export class Demo {
 
   emit() {
     const agents = [...this.agents.values()].map(({ nextAt, life, ...rest }) => ({ ...rest, events: [...rest.events] }));
-    this.onSnapshot({ now: Date.now(), root: 'demo', agents });
+    this.store.applySnapshot({ now: Date.now(), agents });
   }
 
   start() { this.emit(); this.timer = setInterval(() => this.step(), 700); }

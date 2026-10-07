@@ -12,7 +12,9 @@ export const STATIONS = {
 export const STATUS = {
   tool:     { label: 'arbeitet',       color: '#4c8df6' },
   thinking: { label: 'denkt nach',     color: '#9b8afb' },
-  waiting:  { label: 'wartet auf dich', color: '#f0a33a' },
+  waiting_user:       { label: 'wartet auf dich',  color: '#f0a33a' },
+  waiting_permission: { label: 'braucht Erlaubnis', color: '#f0a33a' },
+  error:              { label: 'Fehler',           color: '#e5534b' },
   idle:     { label: 'pausiert',       color: '#6b7587' },
   done:     { label: 'fertig',         color: '#3fb67a' },
 };

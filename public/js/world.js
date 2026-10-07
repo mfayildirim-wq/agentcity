@@ -540,7 +540,7 @@ export class World {
 
   // ---------------------------------------------------------------- Daten → Szene
   sync(agents) {
-    const live = new Set(agents.map((a) => a.key));
+    const live = new Set(agents.map((a) => a.id));
     const byRoom = new Map();
     for (const a of agents) {
       if (!byRoom.has(a.project)) byRoom.set(a.project, []);
@@ -559,7 +559,7 @@ export class World {
 
     // Figuren anlegen/aktualisieren
     for (const a of agents) {
-      let av = this.avatars.get(a.key);
+      let av = this.avatars.get(a.id);
       const room = this.rooms.get(a.project);
       if (!av) {
         av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k) });
@@ -567,13 +567,13 @@ export class World {
         av.setLabelsVisible(this.labelsVisible);
         room.group.add(av.group);
         // Subagenten erscheinen am Besprechungstisch neben dem Erzeuger, Hauptagenten am Eingang
-        const parent = a.parentKey && this.avatars.get(a.parentKey);
+        const parent = a.parentId && this.avatars.get(a.parentId);
         if (parent && parent.room === room) {
           av.group.position.copy(parent.group.position).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0, 0.8));
         } else {
           av.group.position.copy(DOOR);
         }
-        this.avatars.set(a.key, av);
+        this.avatars.set(a.id, av);
       }
       av.update(a);
     }
@@ -600,7 +600,7 @@ export class World {
       for (const st of Object.values(room.stations)) {
         // Stabile Sitzordnung: Hauptagent vorne, dann nach Startzeit
         st.queue.sort((x, y) => (x.kind === y.kind ? (x.startedAt || 0) - (y.startedAt || 0) : x.kind === 'main' ? -1 : 1));
-        st.queue.forEach((a, i) => this.place(this.avatars.get(a.key), room, st, i));
+        st.queue.forEach((a, i) => this.place(this.avatars.get(a.id), room, st, i));
       }
     }
 
@@ -608,12 +608,12 @@ export class World {
   }
 
   stationFor(a) {
-    if (a.status === 'tool' && a.category) return a.category;
-    if (a.status === 'waiting') return a.kind === 'main' ? 'lounge' : 'meeting';
+    if ((a.status === 'tool' || a.status === 'waiting_permission') && a.category) return a.category;
+    if (a.status === 'waiting_user') return a.kind === 'main' ? 'lounge' : 'meeting';
     if (a.status === 'idle') return 'lounge';
     if (a.status === 'done') return 'meeting';
     // Denken: am letzten Ort bleiben, sonst Besprechungstisch
-    const av = this.avatars.get(a.key);
+    const av = this.avatars.get(a.id);
     return av?.stationId && av.stationId !== 'lounge' ? av.stationId : 'meeting';
   }
 
@@ -675,8 +675,8 @@ export class World {
   syncLinks(agents) {
     const want = new Set();
     for (const a of agents) {
-      if (a.kind !== 'sub' || !a.parentKey || a.status === 'done') continue;
-      const id = `${a.key}`;
+      if (a.kind !== 'sub' || !a.parentId || a.status === 'done') continue;
+      const id = `${a.id}`;
       want.add(id);
       if (!this.links.has(id)) {
         const geo = new THREE.BufferGeometry();
@@ -684,7 +684,7 @@ export class World {
         const line = new THREE.Line(geo, new THREE.LineDashedMaterial({ color: agentColor(a), dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: 0.7 }));
         line.frustumCulled = false;
         this.linkGroup.add(line);
-        this.links.set(id, { line, child: a.key, parent: a.parentKey });
+        this.links.set(id, { line, child: a.id, parent: a.parentId });
       }
     }
     for (const [id, l] of this.links) {

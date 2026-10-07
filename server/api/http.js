@@ -66,7 +66,7 @@ export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'pub
 
     if (p === '/' || p === '/index.html') {
       serveFile(res, publicDir, 'index.html', {
-        'Set-Cookie': `arena_token=${config.token}; SameSite=Strict; Path=/`,
+        'Set-Cookie': `arena_token=${config.token}; SameSite=Strict; Path=/; Max-Age=31536000`,
       });
       return;
     }

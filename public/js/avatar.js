@@ -25,13 +25,13 @@ const WALK_SPEED = 2.1;
 
 export class Avatar {
   constructor(agent, { onLabelClick } = {}) {
-    this.key = agent.key;
+    this.key = agent.id;
     this.kind = agent.kind;
     this.data = agent;
     this.group = new THREE.Group();
-    this.group.userData.agentKey = agent.key;
+    this.group.userData.agentKey = agent.id;
     this.path = [];
-    this.phase = (hash(agent.key) % 1000) / 160;
+    this.phase = (hash(agent.id) % 1000) / 160;
     this.facing = 0;
     this.opacity = 0;          // Einblenden beim Betreten
     this.leaving = false;
@@ -50,8 +50,8 @@ export class Avatar {
   build(a) {
     const shirt = new THREE.Color(agentColor(a));
     const pants = shirt.clone().lerp(new THREE.Color('#2a2f3a'), a.kind === 'main' ? 0.78 : 0.7);
-    const skin = this.m(skinTone(a.key));
-    const hair = this.m(hairTone(a.key));
+    const skin = this.m(skinTone(a.id));
+    const hair = this.m(hairTone(a.id));
     const shirtM = this.m(shirt);
     const pantsM = this.m(pants);
     const shoeM = this.m('#2a2c33');
@@ -142,7 +142,7 @@ export class Avatar {
     this.group.traverse((o) => {
       if (o.isMesh) {
         o.castShadow = o !== ring && o !== sel;
-        o.userData.agentKey = a.key;
+        o.userData.agentKey = a.id;
       }
     });
     this.setOpacity(0);
@@ -178,13 +178,15 @@ export class Avatar {
     // Sprechblase bei neuem Werkzeug bzw. Statuswechsel
     let bubble = '';
     if (a.status === 'tool' && a.tool) bubble = `<b>${esc(a.tool.replace(/^mcp__/, '').replace(/__/g, ' · '))}</b>${a.detail ? ' ' + esc(a.detail) : ''}`;
-    else if (a.status === 'waiting') bubble = a.detail ? `<b>Frage</b> ${esc(a.detail)}` : '<b>Wartet</b> auf deine Antwort';
+    else if (a.status === 'waiting_user') bubble = a.detail ? `<b>Frage</b> ${esc(a.detail)}` : '<b>Wartet</b> auf deine Antwort';
+    else if (a.status === 'waiting_permission') bubble = '<b>Erlaubnis</b> wird benötigt';
+    else if (a.status === 'error') bubble = '<b>Fehler</b>';
     else if (a.status === 'thinking') bubble = '<span class="dots"><i></i><i></i><i></i></span>';
     else if (a.status === 'done' && prev?.status !== 'done') bubble = '<b>Fertig</b>';
     if (bubble !== this.lastBubble) {
       this.lastBubble = bubble;
       this.bubbleEl.innerHTML = bubble;
-      this.bubbleUntil = performance.now() + (a.status === 'thinking' || a.status === 'waiting' ? 1e9 : 7000);
+      this.bubbleUntil = performance.now() + (a.status === 'thinking' || a.status === 'waiting_user' || a.status === 'waiting_permission' ? 1e9 : 7000);
     }
   }
 
@@ -252,7 +254,7 @@ export class Avatar {
     if (moving) anim = 'walk';
     else if (s === 'tool') anim = this.atStation ? 'work' : 'idle';
     else if (s === 'thinking') anim = 'think';
-    else if (s === 'idle' || (s === 'waiting' && this.atLounge)) anim = 'sit';
+    else if (s === 'idle' || (s === 'waiting_user' && this.atLounge)) anim = 'sit';
     for (const k of Object.keys(this.blend)) {
       const goal = k === anim ? 1 : 0;
       this.blend[k] += (goal - this.blend[k]) * Math.min(1, dt * 7);
