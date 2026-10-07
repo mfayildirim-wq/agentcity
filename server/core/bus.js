@@ -1,12 +1,12 @@
 // Zentraler Ereignisbus: agent.update, agent.remove, event, chat.chunk, chat.message,
-// permission.request, permission.resolved, pty.output, pty.exit, task.update, meeting.update, toast
+// permission.request, permission.resolved, pty.output, pty.exit, task.update, meeting.update, toast, tools.update
 import { EventEmitter } from 'node:events';
 
 // Ereignisse, die unverändert an alle Browser gehen
 export const BROADCAST_TYPES = [
   'agent.update', 'agent.remove', 'event', 'chat.chunk', 'chat.message',
   'permission.request', 'permission.resolved', 'pty.output', 'pty.exit',
-  'task.update', 'meeting.update', 'toast',
+  'task.update', 'meeting.update', 'toast', 'tools.update',
 ];
 
 export function createBus() {

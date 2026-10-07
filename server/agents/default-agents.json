@@ -1,0 +1,7 @@
+[
+  { "id": "claude",   "name": "Claude Code", "command": "node", "args": ["<arena>/node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js"], "color": "#d97757", "avatarStyle": "gem" },
+  { "id": "codex",    "name": "Codex",       "command": "node", "args": ["<arena>/node_modules/@zed-industries/codex-acp/bin/codex-acp.js"], "color": "#10a37f", "avatarStyle": "cap" },
+  { "id": "opencode", "name": "OpenCode",    "command": "opencode", "args": ["acp"], "color": "#f5a524", "avatarStyle": "hoodie" },
+  { "id": "hermes",   "name": "Hermes",      "command": "hermes",   "args": ["acp"], "color": "#7c5cff", "avatarStyle": "scarf" },
+  { "id": "gemini",   "name": "Gemini",      "command": "gemini",   "args": ["--experimental-acp"], "color": "#4285f4", "avatarStyle": "visor" }
+]
