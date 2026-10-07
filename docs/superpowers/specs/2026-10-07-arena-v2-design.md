@@ -1,6 +1,6 @@
 # Agent Arena v2 – Entwurf
 
-Stand: 07.10.2026 · Status: vom Nutzer freigegeben
+Stand: 07.10.2026 · Status: umgesetzt (07.10.2026, v0.2.0)
 
 ## Ziel
 
