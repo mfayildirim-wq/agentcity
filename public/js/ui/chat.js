@@ -162,7 +162,7 @@ export class ChatBar {
     const show = !!(a && a.controllable && a.kind === 'main');
     this.el.classList.toggle('hidden', !show);
     document.body.classList.toggle('has-chat', show);
-    if (!show) { this.agentId = null; return; }
+    if (!show) { this.agentId = null; this.shell?.detach(); return; }
     const switched = this.agentId !== a.id;
     this.agentId = a.id;
     if (switched && this.view === 'term') this.shell?.show(a.id);

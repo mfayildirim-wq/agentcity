@@ -156,7 +156,12 @@ export function createStore() {
     const t = state.terminals.get(ptyId);
     if (t) {
       t.data += data;
-      if (t.data.length > MAX_TERM_DATA * 1.5) t.data = t.data.slice(-MAX_TERM_DATA);
+      if (t.data.length > MAX_TERM_DATA * 1.5) {
+        // am Zeilenanfang abschneiden (keine halben Escape-Folgen in der Wiederanzeige)
+        const cut = t.data.slice(-MAX_TERM_DATA);
+        const nl = cut.indexOf('\n');
+        t.data = nl >= 0 && nl < cut.length - 1 ? cut.slice(nl + 1) : cut;
+      }
     }
     for (const fn of ptySubs) fn({ type: 'output', ptyId, data });
   }

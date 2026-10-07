@@ -25,7 +25,20 @@ export function startWatchers({ state, bus, config, watchers = createDefaultWatc
   let timer = null;
   let running = false;
 
-  function syncWatcher(w, acpSessions) {
+  // Sessions, die ein ACP-Agent steuert (auch während einer laufenden Übernahme)
+  function acpSessionIds() {
+    const ids = new Set();
+    for (const a of state.all()) {
+      if (a.source !== 'acp') continue;
+      if (a.sessionId) ids.add(a.sessionId);
+      if (a.acpSessionId) ids.add(a.acpSessionId);
+    }
+    return ids;
+  }
+
+  function syncWatcher(w) {
+    // erst nach dem (asynchronen) Scan ermitteln – eine Übernahme kann währenddessen abgeschlossen sein
+    const acpSessions = acpSessionIds();
     const skip = (a) => a.sessionId && acpSessions.has(a.sessionId);
     const adoptable = w.adoptable ?? ADOPTABLE.has(w.id);
     const list = w.agents().filter((a) => !skip(a)).map((a) => ({ ...a, adoptable: adoptable && a.kind === 'main' }));
@@ -45,17 +58,10 @@ export function startWatchers({ state, bus, config, watchers = createDefaultWatc
     if (running) return;
     running = true;
     try {
-      // Sessions, die ein ACP-Agent übernommen hat, ignorieren
-      const acpSessions = new Set();
-      for (const a of state.all()) {
-        if (a.source !== 'acp') continue;
-        if (a.sessionId) acpSessions.add(a.sessionId);
-        if (a.acpSessionId) acpSessions.add(a.acpSessionId);
-      }
       for (const w of watchers) {
         try {
           await w.scan();
-          syncWatcher(w, acpSessions);
+          syncWatcher(w);
         } catch (err) {
           console.error(`[watch:${w.id}]`, err?.message ?? err);
         }

@@ -61,7 +61,7 @@ test('open echo hallo → data enthält hallo, exit 0, Bus-Ereignisse', async ()
   assert.match(pty.buffer(ptyId), /hallo/);
   assert.equal(pty.output(ptyId).output, 'hallo\n', 'ACP-Ausgabe mit \\n statt \\r\\n');
   assert.deepEqual(await pty.waitExit(ptyId), { exitCode: 0, signal: null });
-  pty.closeAll();
+  await pty.closeAll();
 });
 
 test('Befehl mit Leerzeichen ohne args läuft über sh -c', async () => {
@@ -71,7 +71,7 @@ test('Befehl mit Leerzeichen ohne args läuft über sh -c', async () => {
   assert.equal(st.exitCode, 0);
   assert.match(pty.buffer(ptyId), /eins\r?\nzwei/);
   assert.equal(pty.get(ptyId).command, 'echo eins && echo zwei');
-  pty.closeAll();
+  await pty.closeAll();
 });
 
 test('Nutzer-Shell: Eingabe, Größe, schließen; eine je Agent', async () => {
@@ -87,7 +87,28 @@ test('Nutzer-Shell: Eingabe, Größe, schließen; eine je Agent', async () => {
   pty.close(ptyId);
   assert.equal(pty.userShell('a1'), null);
   assert.equal(pty.get(ptyId), null);
-  pty.closeAll();
+  await pty.closeAll();
+});
+
+test('closeAll: SIGHUP, dann SIGKILL an Prozesse, die HUP ignorieren', async () => {
+  const pty = createPtyManager();
+  const { ptyId } = pty.open({ cwd, command: 'sh', args: ['-c', "trap '' HUP; echo bereit; sleep 30"], kind: 'agent', agentId: 'a1' });
+  await waitFor(() => /bereit/.test(pty.buffer(ptyId)));
+  let exit = null;
+  pty.on('exit', (e) => { exit = e; });
+  const t0 = Date.now();
+  await pty.closeAll({ graceMs: 300 });
+  assert.ok(Date.now() - t0 >= 280, 'wartet die Schonfrist ab');
+  assert.equal(pty.size, 0);
+  await waitFor(() => exit, 3000);
+  assert.ok(exit.signal || exit.exitCode !== 0, 'hart beendet');
+});
+
+test('Shell startet nicht → Fehler, kein Eintrag bleibt', () => {
+  const pty = createPtyManager({ spawn: () => { throw new Error('posix_spawnp failed.'); } });
+  assert.throws(() => pty.open({ cwd, kind: 'user', agentId: 'a1' }), /konnte nicht starten.*posix_spawnp/);
+  assert.equal(pty.size, 0);
+  assert.equal(pty.userShell('a1'), null);
 });
 
 test('Ringpuffer begrenzt und schneidet an Zeichengrenzen', () => {
@@ -112,7 +133,7 @@ test('closeAgent beendet alle Terminals eines Agenten', async () => {
   assert.equal(pty.get(b), null);
   assert.ok(pty.get(c));
   await waitFor(() => exits.includes(a) && exits.includes(b));
-  pty.closeAll();
+  await pty.closeAll();
 });
 
 // ---------------------------------------------------------------- ACP terminal/*
@@ -138,9 +159,14 @@ test('terminal-Handler: Ordner prüfen, Ausgabe begrenzen, release', async () =>
   assert.throws(() => h.terminalOutput({ sessionId: 's', terminalId }), /terminal/);
   assert.ok(pty.get(terminalId), 'bleibt zur Anzeige erhalten');
   assert.equal(outputLimit(undefined), 64 * 1024);
+  // höchstens maxLive laufende Terminals
+  const h2 = createTerminalHandlers({ pty, cwd, agentId: 'a2', maxLive: 16 });
+  for (let i = 0; i < 16; i++) await h2.createTerminal({ sessionId: 's', command: 'sleep', args: ['30'] });
+  await assert.rejects(() => h2.createTerminal({ sessionId: 's', command: 'sleep', args: ['30'] }), /Zu viele/);
+  h2.dispose();
   assert.equal(outputLimit(10), 1024);
   assert.equal(createTerminalHandlers().supported, false);
-  pty.closeAll();
+  await pty.closeAll();
 });
 
 test('ACP mit Fake-Agent: terminal/create, Ereignis terminal, Station, Aufräumen beim Schließen', async () => {
@@ -184,7 +210,7 @@ test('ACP mit Fake-Agent: terminal/create, Ereignis terminal, Station, Aufräume
     assert.equal(pty.listFor(id).length, 0, 'Schließen räumt alle Terminals auf');
   } finally {
     await manager.stopAll();
-    pty.closeAll();
+    await pty.closeAll();
   }
 });
 
@@ -210,7 +236,7 @@ before(async () => {
 
 after(async () => {
   await wsManager.stopAll();
-  wsPty.closeAll();
+  await wsPty.closeAll();
   wsApi.close();
   await new Promise((r) => server.close(r));
 });
@@ -249,6 +275,13 @@ test('WS: pty.open/input/output, Wiederverwendung mit Puffer, Schreibschutz, pty
   await ws.ready;
   const { agentId } = await ws.request('session.create', { toolId: 'fake', cwd });
   await assert.rejects(() => ws.request('pty.open', { agentId: 'gibtsnicht' }), /nicht gefunden/);
+  // externe (Watcher-)Agenten und Subagenten bekommen keine Shell
+  wsState.upsert({ id: 'w:claude:x', kind: 'main', source: 'watch', cwd, project: 'p' });
+  wsState.upsert({ id: 'a:sub', kind: 'sub', source: 'acp', parentId: agentId, cwd, project: 'p' });
+  await assert.rejects(() => ws.request('pty.open', { agentId: 'w:claude:x' }), /nur für steuerbare/);
+  await assert.rejects(() => ws.request('pty.open', { agentId: 'a:sub' }), /nur für steuerbare/);
+  wsState.remove('w:claude:x');
+  wsState.remove('a:sub');
 
   const { ptyId, buffer, reused } = await ws.request('pty.open', { agentId, cols: 80, rows: 24 });
   assert.match(ptyId, /^p:/);

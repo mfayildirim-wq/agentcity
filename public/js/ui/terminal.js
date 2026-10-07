@@ -132,6 +132,8 @@ export class ShellView {
         this.box.reset(`\x1b[31m${err.message}\x1b[0m\r\n`);
       } finally {
         this.opening = null;
+        // während des Öffnens auf einen anderen Agenten gewechselt → dessen Shell jetzt öffnen
+        if (this.agentId && this.agentId !== agentId && !this.ptyId) this.open();
       }
     })();
     return this.opening;
@@ -160,7 +162,13 @@ export class ShellView {
   focusSoon() { requestAnimationFrame(() => { this.box.refit(); this.box.focus(); }); }
 
   // Agent weg: Ansicht leeren (die Shell beendet der Server beim Schließen der Session)
-  detach() { this.agentId = null; this.ptyId = null; }
+  detach() {
+    if (!this.agentId && !this.ptyId) return;
+    this.agentId = null;
+    this.ptyId = null;
+    this.early = '';
+    this.box.reset('');
+  }
 }
 
 // Schreibgeschützte Ausgabe eines Agenten-Terminals; das Element wird beim Neuzeichnen der Detailkarte umgehängt

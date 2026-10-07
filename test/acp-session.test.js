@@ -13,6 +13,7 @@ import { createSessionManager } from '../server/acp/manager.js';
 import { EventEmitter } from 'node:events';
 import { isSubagentCall, toolDetail, diffPayload, createAcpSession } from '../server/acp/session.js';
 import { createRecorder } from '../server/db/recorder.js';
+import { startWatchers } from '../server/watchers/index.js';
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const TOOLS = { fake: { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] } };
@@ -364,4 +365,41 @@ test('Diffs: Texte auf 64 KB gekürzt, DB speichert nur Pfad und Zeilen', () => 
   assert.equal(payload.path, '/p/a.txt');
   assert.equal(payload.newLines, 1);
   assert.equal('newText' in payload || 'oldText' in payload, false);
+});
+
+test('Übernahme während eines Watcher-Ticks erzeugt keinen Doppel-Agenten', async () => {
+  const ext = createAgent({ id: 'w:fake:ext-9', toolId: 'fake', sessionId: 'ext-9', acpSessionId: 'ext-9', project: 'p', cwd, source: 'watch', controllable: false });
+  let release;
+  const gate = () => new Promise((r) => { release = r; });
+  const watcher = { id: 'fake', adoptable: true, scan: async () => { if (scanBlocked) await gate(); }, agents: () => [ext] };
+  let scanBlocked = false;
+  const w = startWatchers({ state, bus, config: {}, watchers: [watcher], autoStart: false });
+  await w.tick();
+  assert.ok(state.get(ext.id), 'Watcher meldet die externe Session');
+  scanBlocked = true;
+  const tick = w.tick(); // Scan läuft, Übernahme währenddessen
+  const id = await manager.adopt(ext.id);
+  release();
+  await tick;
+  assert.equal(state.get(ext.id), undefined, 'Watcher-Agent kommt nicht zurück');
+  assert.equal(state.all().filter((a) => a.sessionId === 'ext-9').length, 1);
+  // zweite Übernahme derselben Session wird abgelehnt
+  state.upsert({ ...ext });
+  await assert.rejects(() => manager.adopt(ext.id), /bereits in der Arena/);
+  assert.equal(state.get(ext.id), undefined);
+  assert.equal(state.get(id).controllable, true);
+  w.stop();
+});
+
+test('Übernahme-Fehlschlag: externe Session wird nicht als beendet markiert', async () => {
+  TOOLS.kaputt = { id: 'kaputt', name: 'Kaputt', command: 'gibt-es-nicht-arena', args: [] };
+  repo.createSession({ id: 'ext-10', toolId: 'kaputt', acpSessionId: 'ext-10', projectId: null, title: 'extern', source: 'watch', mode: null });
+  const w = createAgent({ id: 'w:kaputt:ext-10', toolId: 'kaputt', sessionId: 'ext-10', acpSessionId: 'ext-10', project: 'p', cwd, source: 'watch', controllable: false });
+  state.upsert(w);
+  await assert.rejects(() => manager.adopt(w.id), /konnte nicht starten/);
+  await new Promise((r) => setTimeout(r, 50));
+  const row = repo.getSession('ext-10');
+  assert.equal(row.ended_at, null);
+  assert.ok(state.get(w.id), 'externe Session bleibt sichtbar');
+  delete TOOLS.kaputt;
 });

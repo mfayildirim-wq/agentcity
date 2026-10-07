@@ -136,6 +136,13 @@ export function createSessionManager({
     const tool = toolOf(w.toolId);
     const dir = checkDir(w.cwd);
     const external = w.acpSessionId ?? w.sessionId;
+    // bereits übernommen (z. B. Watcher hat den Agenten kurz vor dem Entfernen erneut gemeldet)
+    const taken = state.all().some((a) => a.source === 'acp'
+      && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === w.sessionId || sid === external)));
+    if (taken) {
+      state.remove(w.id);
+      throw new Error('Session wird bereits in der Arena gesteuert');
+    }
     const id = await launch({
       tool, cwd: dir, mode: 'confirm', title: w.title, sessionId: w.sessionId, acpSessionId: external, adopted: true,
       open: async (client, session, init) => {

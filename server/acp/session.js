@@ -70,7 +70,8 @@ export function createAcpSession({
   const pending = new Map(); // permissionId → { perm, resolve, key }
   const alwaysAllow = new Set();
   const timers = new Set();
-  const displays = new Map(); // terminal_id (Adapter, _meta.terminal_info) → { owner, ptyId, command, toolCallId }
+  const displays = new Map(); // terminal_id (Adapter, _meta.terminal_info) → { owner, ptyId, command, toolCallId, fed }
+  const doneDisplays = new Set(); // beendete terminal_ids (Nachzügler-Updates ignorieren), begrenzt
   let segment = null; // { id, role, text, owner }
   let turnText = '';
   let busy = false;
@@ -349,9 +350,9 @@ export function createAcpSession({
     const meta = u._meta ?? {};
     const termId = meta.terminal_info?.terminal_id ?? meta.terminal_output?.terminal_id ?? meta.terminal_output_delta?.terminal_id
       ?? meta.terminal_exit?.terminal_id ?? (displays.has(u.toolCallId) ? u.toolCallId : null);
-    if (typeof termId !== 'string' || !termId) return;
+    if (typeof termId !== 'string' || !termId || doneDisplays.has(termId)) return;
     let d = displays.get(termId);
-    if (!d) { d = { owner, ptyId: null, command: null, toolCallId: u.toolCallId }; displays.set(termId, d); }
+    if (!d) { d = { owner, ptyId: null, command: null, toolCallId: u.toolCallId, fed: '' }; displays.set(termId, d); }
     const cmd = u.rawInput && typeof u.rawInput === 'object' && typeof u.rawInput.command === 'string' ? u.rawInput.command : null;
     if (cmd) d.command = cmd;
     const out = meta.terminal_output_delta ?? meta.terminal_output;
@@ -362,9 +363,22 @@ export function createAcpSession({
       terminalEvent({ ptyId: d.ptyId, command: d.command ?? openTools.get(u.toolCallId)?.title ?? 'Befehl', display: true }, d.owner);
     }
     if (!d.ptyId) return;
-    if (out && typeof out.data === 'string' && out.data) pty.feed(d.ptyId, out.data.replace(/\r?\n/g, '\r\n'));
-    if (exit) pty.finish(d.ptyId, exit.exit_code ?? null, exit.signal ?? null);
-    else if (finished) pty.finish(d.ptyId, u.status === 'failed' ? 1 : null, null);
+    if (out && typeof out.data === 'string' && out.data) {
+      // terminal_output_delta = Zuwachs; terminal_output kann kumuliert sein (der Claude-Adapter schickt die
+      // vollständige Ausgabe einmal am Ende) → nur den neuen Teil anhängen
+      let data = out.data;
+      if (!meta.terminal_output_delta && d.fed && data.startsWith(d.fed)) data = data.slice(d.fed.length);
+      d.fed = meta.terminal_output_delta ? d.fed + out.data : out.data;
+      if (d.fed.length > 256 * 1024) d.fed = '';
+      if (data) pty.feed(d.ptyId, data.replace(/\r?\n/g, '\r\n'));
+    }
+    if (exit || finished) {
+      if (exit) pty.finish(d.ptyId, exit.exit_code ?? null, exit.signal ?? null);
+      else pty.finish(d.ptyId, u.status === 'failed' ? 1 : null, null);
+      displays.delete(termId);
+      doneDisplays.add(termId);
+      if (doneDisplays.size > 200) doneDisplays.delete(doneDisplays.values().next().value);
+    }
   }
 
   // ------------------------------------------------------------------ Berechtigungen

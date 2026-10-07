@@ -18,7 +18,7 @@ später im Verlauf nachsehen. Weitere Tools lassen sich ohne Code hinzufügen.
 | Rückfragen | im Browser bestätigen | Nutzer behält Kontrolle; Figur hebt die Hand, Karte mit Erlauben/Immer/Ablehnen |
 | Datenhaltung | SQLite (`node:sqlite`, in Node ≥ 22 eingebaut) | Keine Fremdabhängigkeit, Verlauf und Archiv |
 | Transport Browser ↔ Server | WebSocket (Paket `ws`) | Bidirektional: Chat, Bestätigungen, Terminal |
-| Externe Sessions | weiter per Dateibeobachtung (wie v1) | Sessions aus dem eigenen Terminal bleiben sichtbar; „Übernehmen“ setzt sie per `--resume` in der Arena fort |
+| Externe Sessions | weiter per Dateibeobachtung (wie v1) | Sessions aus dem eigenen Terminal bleiben sichtbar; „Übernehmen“ setzt sie per ACP `session/load` in der Arena fort |
 | Erreichbarkeit | nur 127.0.0.1 + Zugangstoken | Keine fremde Webseite darf Agenten fernsteuern |
 
 ## Architektur
@@ -112,8 +112,8 @@ Teilnehmer (oder nur `@name`), mit Kontext „Du bist in einer Besprechung mit �
 gesammelt. „Aufgabe erstellen“ legt Task an; „Zuweisen“ schickt den Task als Prompt an den Agenten und setzt
 Status `active`; Agentenstatus `done`/`waiting_user` setzt Task auf `waiting`; Nutzer hakt ab.
 
-**Übernehmen:** externe Claude-Session → `session.adopt` → Server startet ACP-Prozess mit `--resume <id>`
-(über `session/load`), Watcher-Agent wird durch steuerbaren ersetzt.
+**Übernehmen:** externe Claude-/Codex-Session → `session.adopt` → Server startet den ACP-Adapter im Ordner der Session
+und lädt sie per `session/load <id>`, Watcher-Agent wird durch steuerbaren ersetzt.
 
 **Fehler:** Prozess-Exit ≠ 0 oder JSON-RPC-Fehler → Status `error`, Karte „Neu starten / Fortsetzen / Schließen“.
 Verbindungsabbruch WS → Banner, automatische Wiederverbindung mit Snapshot.

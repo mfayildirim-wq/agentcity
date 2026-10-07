@@ -68,7 +68,7 @@ async function shutdown(signal) {
   console.log(`\n  ${signal} – Agent Arena wird beendet …`);
   watchers.stop();
   await Promise.race([acp.stopAll(), new Promise((r) => setTimeout(r, 2500))]);
-  pty.closeAll();
+  await pty.closeAll({ graceMs: 1000 });
   recorder.stop();
   ws.close();
   server.close();

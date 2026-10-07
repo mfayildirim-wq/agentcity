@@ -17,15 +17,21 @@ const require = createRequire(import.meta.url);
 // node-pty bringt für macOS ein vorgebautes spawn-helper mit, dem nach `npm install` manchmal das
 // Ausführungsrecht fehlt („posix_spawnp failed“) – einmalig nachsetzen.
 function ensureSpawnHelper() {
-  try {
-    const root = path.dirname(require.resolve('node-pty/package.json'));
-    for (const dir of [path.join(root, 'prebuilds', `${process.platform}-${process.arch}`), path.join(root, 'build', 'Release')]) {
+  let root;
+  try { root = path.dirname(require.resolve('node-pty/package.json')); } catch { return; }
+  let warned = false;
+  for (const dir of [path.join(root, 'prebuilds', `${process.platform}-${process.arch}`), path.join(root, 'build', 'Release')]) {
+    try {
       const helper = path.join(dir, 'spawn-helper');
       if (!fs.existsSync(helper)) continue;
       const mode = fs.statSync(helper).mode;
       if (!(mode & 0o111)) fs.chmodSync(helper, mode | 0o755);
+    } catch (err) {
+      // keine Rechte o. Ä. – spawn meldet dann selbst den Fehler
+      if (!warned) console.warn(`[pty] spawn-helper nicht ausführbar zu machen (${dir}): ${err.message}`);
+      warned = true;
     }
-  } catch { /* kein macOS-Prebuild oder keine Rechte – spawn meldet dann selbst den Fehler */ }
+  }
 }
 
 let ptyModule = null;
@@ -55,7 +61,10 @@ export class ByteRing {
   }
 
   compact() {
-    if (this.bytes <= this.limit) return;
+    if (this.bytes <= this.limit) {
+      if (this.chunks.length > 1) this.chunks = [this.chunks.join('')]; // viele kleine Stücke zusammenfassen
+      return;
+    }
     const buf = Buffer.from(this.chunks.join(''));
     let start = buf.length - this.limit;
     while (start < buf.length && (buf[start] & 0xc0) === 0x80) start++; // keine halben Zeichen
@@ -170,7 +179,9 @@ export function createPtyManager({ bus = null, shell = process.env.SHELL || '/bi
       throw new Error(`Terminal konnte nicht starten (${file}): ${err.message}`);
     }
     t.proc.onData((d) => onData(t, d));
-    t.proc.onExit(({ exitCode, signal }) => onExit(t, exitCode, signal || null));
+    t.pid = t.proc.pid;
+    // Ende einen Tick später verarbeiten, damit Nachzügler-Daten des PTY noch ankommen
+    t.proc.onExit(({ exitCode, signal }) => setImmediate(() => onExit(t, exitCode, signal || null)));
     if (kind === 'user' && agentId) userShells.set(agentId, t.ptyId);
     return { ptyId: t.ptyId };
   }
@@ -217,14 +228,15 @@ export function createPtyManager({ bus = null, shell = process.env.SHELL || '/bi
     const t = terms.get(ptyId);
     if (!t?.proc) return;
     const proc = t.proc;
-    // ganze Prozessgruppe (der PTY-Prozess ist Sitzungsführer), sonst nur den Prozess
-    const send = (sig) => {
-      try { process.kill(-proc.pid, sig); } catch { try { proc.kill(sig); } catch { /* bereits beendet */ } }
-    };
-    send(signal);
+    signalGroup(proc, signal);
     // hartnäckige Prozesse nach 1,5 s hart beenden
-    const hard = setTimeout(() => { if (t.proc === proc) send('SIGKILL'); }, 1500);
+    const hard = setTimeout(() => { if (t.proc === proc) signalGroup(proc, 'SIGKILL'); }, 1500);
     hard.unref?.();
+  }
+
+  // ganze Prozessgruppe (der PTY-Prozess ist Sitzungsführer), sonst nur den Prozess
+  function signalGroup(proc, sig) {
+    try { process.kill(-proc.pid, sig); } catch { try { proc.kill(sig); } catch { /* bereits beendet */ } }
   }
 
   // Beenden und entfernen
@@ -275,23 +287,23 @@ export function createPtyManager({ bus = null, shell = process.env.SHELL || '/bi
     for (const t of [...terms.values()]) if (t.ownerId === agentId || t.agentId === agentId) close(t.ptyId);
   }
 
-  // Agenten-Prozess beendet: laufende Agenten-Terminals beenden, Nutzer-Shell bleibt
-  function killAgentTerminals(agentId) {
-    for (const t of [...terms.values()]) {
-      if ((t.ownerId === agentId || t.agentId === agentId) && t.kind !== 'user') {
-        t.released = true;
-        if (t.proc) kill(t.ptyId); else if (!t.exitStatus) onExit(t, null, null);
-      }
-    }
-  }
-
-  function closeAll() {
-    for (const id of [...terms.keys()]) close(id);
+  // Server-Ende: SIGHUP an alle, bis graceMs auf das Ende warten, übrige Prozessgruppen hart beenden
+  async function closeAll({ graceMs = 1000 } = {}) {
+    const live = [...terms.values()].filter((t) => t.proc);
+    const exits = live.map((t) => new Promise((resolve) => t.waiters.push(resolve)));
+    for (const t of live) signalGroup(t.proc, 'SIGHUP');
+    terms.clear();
+    userShells.clear();
+    if (!live.length) return;
+    let timer;
+    await Promise.race([Promise.all(exits), new Promise((r) => { timer = setTimeout(r, graceMs); })]);
+    clearTimeout(timer);
+    for (const t of live) if (t.proc) signalGroup(t.proc, 'SIGKILL');
   }
 
   return {
     open, openDisplay, feed, finish, write, resize, kill, close, release, waitExit, output, buffer, get, list, listFor,
-    userShell, closeAgent, killAgentTerminals, closeAll, on: emitter.on.bind(emitter), off: emitter.off.bind(emitter),
+    userShell, closeAgent, closeAll, on: emitter.on.bind(emitter), off: emitter.off.bind(emitter),
     get size() { return terms.size; },
   };
 }

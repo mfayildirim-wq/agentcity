@@ -55,6 +55,11 @@ test/               node --test
 - Server nur auf 127.0.0.1; fremde Host-/Origin-Header werden abgewiesen
 - WebSocket nur mit Token (`hello { token }` oder Cookie `arena_token`, das die Startseite setzt),
   sonst Abbruch mit Code 4401
+- Terminals führen echte Shell-Befehle aus (node-pty). Deshalb gilt für `pty.*` dieselbe Absicherung wie für die
+  Agentensteuerung: nur über den authentifizierten WebSocket (Token bzw. Cookie), nur von der Arena-Seite selbst
+  (Origin = Host und Port der Arena), Server nur auf 127.0.0.1. Nutzer-Shells gibt es nur für steuerbare Sessions,
+  im Projektordner des Agenten; Agenten-Terminals (`terminal/*`) laufen nur innerhalb des Projektordners, sind im
+  Browser schreibgeschützt und enden mit der Session
 - Es werden keine Daten verschickt
 
 ## Entwicklung
