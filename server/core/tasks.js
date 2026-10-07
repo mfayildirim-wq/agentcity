@@ -23,6 +23,7 @@ export function assignPrompt(task) {
 export function createTasks({ state, bus, repo, acp }) {
   const current = new Map(); // agentId → taskId (zuletzt zugewiesene, noch nicht erledigte Aufgabe)
   const lastStatus = new Map(); // agentId → zuletzt gesehener Agentenstatus
+  const meetingTurn = new Set(); // Agenten, deren laufender/letzter Zug aus einer Besprechung stammt
 
   const need = (id) => {
     const t = state.tasks.get(id);
@@ -103,7 +104,13 @@ export function createTasks({ state, bus, repo, acp }) {
     run.catch((err) => { early = err; });
     await new Promise((r) => setImmediate(r));
     if (early) throw early;
-    // vorherige Aufgabe des Agenten folgt ihm nicht mehr
+    meetingTurn.delete(agentId);
+    // bisherige Aufgabe des Agenten folgt ihm nicht mehr (lief sie noch, wartet sie jetzt auf den Nutzer)
+    const prevId = current.get(agentId);
+    const prevTask = prevId && prevId !== t.id ? state.tasks.get(prevId) : null;
+    if (prevTask?.status === 'active') save(prevTask.id, { status: 'waiting' });
+    // Neu-Zuweisung: der bisherige Bearbeiter verliert die Aufgabe
+    if (t.assigneeId && t.assigneeId !== agentId && current.get(t.assigneeId) === t.id) current.delete(t.assigneeId);
     current.set(agentId, t.id);
     lastStatus.set(agentId, state.get(agentId)?.status);
     // Zug schon vorbei (sehr schneller Agent) oder Rückfrage offen → wartet auf den Nutzer
@@ -121,10 +128,17 @@ export function createTasks({ state, bus, repo, acp }) {
     return { ok: true };
   }
 
+  // Züge aus einer Besprechung (Prompt mit meetingId) verändern den Aufgabenstatus nicht
+  function onChatMessage({ agentId, message }) {
+    if (message?.role !== 'user') return;
+    if (message.meetingId) meetingTurn.add(agentId); else meetingTurn.delete(agentId);
+  }
+
   function onAgentUpdate({ agent }) {
     const prev = lastStatus.get(agent.id);
     if (prev === agent.status) return;
     lastStatus.set(agent.id, agent.status);
+    if (meetingTurn.has(agent.id) && agent.status !== 'error') return;
     const taskId = current.get(agent.id);
     if (!taskId) return;
     const t = state.tasks.get(taskId);
@@ -135,6 +149,7 @@ export function createTasks({ state, bus, repo, acp }) {
 
   function onAgentRemove({ agentId }) {
     lastStatus.delete(agentId);
+    meetingTurn.delete(agentId);
     const taskId = current.get(agentId);
     current.delete(agentId);
     const t = taskId && state.tasks.get(taskId);
@@ -143,7 +158,9 @@ export function createTasks({ state, bus, repo, acp }) {
 
   bus.on('agent.update', onAgentUpdate);
   bus.on('agent.remove', onAgentRemove);
+  bus.on('chat.message', onChatMessage);
   function stop() {
+    bus.off('chat.message', onChatMessage);
     bus.off('agent.update', onAgentUpdate);
     bus.off('agent.remove', onAgentRemove);
   }

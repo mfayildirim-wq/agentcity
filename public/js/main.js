@@ -120,6 +120,7 @@ const board = new Board($('board'), {
   onAssign: (taskId, agentId) => request('task.assign', { taskId, agentId }, 30_000).then((r) => store.applyTask(r.task)),
   onDelete: (taskId) => request('task.delete', { taskId }).then(() => store.applyTaskRemove(taskId)),
   onSelect: select,
+  toast,
 });
 board.onToggle = (on) => $('btn-board').classList.toggle('on', on);
 

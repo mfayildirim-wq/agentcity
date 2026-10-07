@@ -458,7 +458,15 @@ export class World {
     window.addEventListener('pointermove', (e) => this.dragMove(e));
     window.addEventListener('pointerup', (e) => this.dragEnd(e, false));
     window.addEventListener('pointercancel', (e) => this.dragEnd(e, true));
-    window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && this.drag) this.dragEnd(e, true); });
+    // Esc bricht das Ziehen ab (Capture-Phase, damit Esc nicht zusätzlich die Auswahl aufhebt)
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !this.drag) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      this.dragEnd({}, true);
+    }, true);
+    // Fensterwechsel während des Ziehens: abbrechen, Kamera wieder freigeben
+    window.addEventListener('blur', () => { if (this.drag) this.dragEnd({}, true); });
     el.addEventListener('pointermove', (e) => {
       if (this.dragging) return;
       const key = this.pick(e);
@@ -480,6 +488,8 @@ export class World {
     if (!info) return;
     this.drag = { key, info, x: e.clientX, y: e.clientY, pointerId: e.pointerId };
     this.controls.enabled = false; // kein Drehen, solange eine Figur gegriffen ist
+    // Zeiger festhalten: Loslassen außerhalb des Canvas (über Panels) kommt trotzdem an
+    try { this.renderer.domElement.setPointerCapture(e.pointerId); } catch { /* Zeiger schon weg */ }
   }
 
   dragMove(e) {
@@ -507,6 +517,7 @@ export class World {
     if (!d || (e.pointerId !== undefined && e.pointerId !== d.pointerId)) return;
     this.drag = null;
     this.controls.enabled = true;
+    try { this.renderer.domElement.releasePointerCapture(d.pointerId); } catch { /* nicht gehalten */ }
     if (!this.dragging) return;
     const room = !cancel && this.meetingPadAt(e);
     this.dragging = null;

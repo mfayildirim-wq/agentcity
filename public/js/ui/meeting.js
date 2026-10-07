@@ -251,7 +251,7 @@ export class MeetingBar {
         title="${esc(handle)} · ${esc(a ? agentName(a) : 'beendet')} – ${esc(st.label)} (Klick: @${esc(handle)}, Doppelklick: auswählen)" style="--s:${st.color}">
         ${avatar(a)}<i></i></span>`;
     }).join('');
-    if (this.peopleEl.innerHTML !== html) this.peopleEl.innerHTML = html;
+    if (html !== this.peopleHtml) { this.peopleHtml = html; this.peopleEl.innerHTML = html; }
   }
 
   renderLog(m) {

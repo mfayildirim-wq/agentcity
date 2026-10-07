@@ -122,6 +122,48 @@ test('Rückfrage → waiting, Antwort → active; beschäftigter Agent → Fehle
   assert.equal(state.tasks.get(t2.id).status, 'waiting');
 });
 
+test('zweite Aufgabe: bisherige wartet; Neu-Zuweisung X→Y; Besprechungszüge ändern nichts', async () => {
+  const x = await manager.createSession({ toolId: 'fake', cwd, mode: 'confirm' });
+  const y = await manager.createSession({ toolId: 'fake', cwd, mode: 'auto' });
+  const t1 = tasks.create({ title: 'Eins' });
+  await tasks.assign(t1.id, x);
+  await waitFor(() => state.get(x).status === 'waiting_permission');
+  // Rückfrage → waiting; Antwort → active (läuft weiter)
+  manager.answerPermission([...state.permissions.values()][0].id, 'allow');
+  await waitFor(() => state.get(x).status === 'waiting_user');
+  // t1 von X zu Y verschieben: X folgt t1 danach nicht mehr
+  await tasks.assign(t1.id, y);
+  assert.equal(state.tasks.get(t1.id).assigneeId, y);
+  await waitFor(() => state.tasks.get(t1.id).status === 'waiting');
+  const run = manager.prompt(x, 'hi');
+  // X arbeitet (Rückfrage) – t1 bleibt bei Y „waiting“
+  await waitFor(() => state.get(x).status === 'waiting_permission');
+  assert.equal(state.tasks.get(t1.id).status, 'waiting');
+  await manager.cancel(x);
+  await run;
+
+  // zweite Aufgabe für Y, während die erste noch läuft → erste wartet
+  const t2 = tasks.create({ title: 'Zwei' });
+  const t3 = tasks.create({ title: 'Drei' });
+  await tasks.assign(t2.id, y);
+  assert.equal(state.tasks.get(t2.id).status, 'active');
+  await waitFor(() => state.tasks.get(t2.id).status === 'waiting');
+  tasks.update(t2.id, { status: 'active' }); // Nutzer zieht sie zurück nach „In Arbeit“
+  await tasks.assign(t3.id, y);
+  assert.equal(state.tasks.get(t2.id).status, 'waiting', 'bisherige aktive Aufgabe wartet');
+  await waitFor(() => state.tasks.get(t3.id).status === 'waiting');
+
+  // Besprechungszug: t3 bleibt unverändert
+  const meetings = createMeetings({ state, bus, repo, acp: manager, registry });
+  const m = meetings.create({ participantIds: [y] });
+  const before = updates.length;
+  await meetings.message(m.id, 'kurze Frage');
+  await waitFor(() => meetings.get(m.id).messages.some((x2) => x2.role === 'agent'));
+  assert.equal(state.tasks.get(t3.id).status, 'waiting');
+  assert.equal(updates.length, before, 'kein task.update durch den Besprechungszug');
+  meetings.stop();
+});
+
 test('load: aktive Aufgaben ohne Session → waiting', () => {
   const t = repo.tasks.create({ title: 'Alt' });
   repo.tasks.update(t.id, { status: 'active', assigneeId: 'a:weg' });
@@ -159,7 +201,8 @@ test('WS: task.* und meeting.* über den Router', async () => {
     const { meeting } = await request('meeting.create', { title: 'WS', participantIds: [a] });
     await next((m) => m.type === 'meeting.update' && m.meeting.id === meeting.id);
     await request('meeting.message', { meetingId: meeting.id, text: 'Hallo Runde' });
-    await next((m) => m.type === 'meeting.update' && m.meeting.messages.some((x) => x.role === 'agent'));
+    await next((m) => m.type === 'meeting.message' && m.meetingId === meeting.id && m.message.role === 'agent');
+    assert.ok(!queue.some((m) => m.type === 'meeting.update' && m.meeting.messages), 'meeting.update ohne Nachrichten');
     await assert.rejects(() => request('meeting.message', { meetingId: meeting.id, text: '' }), /Leere/);
 
     const { task } = await request('task.create', { title: 'Aus WS', meetingId: meeting.id, assigneeId: a });

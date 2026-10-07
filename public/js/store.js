@@ -183,12 +183,23 @@ export function createStore() {
   function applyPermissionResolved(permissionId) { state.permissions.delete(permissionId); changed('permissions'); }
   function applyTask(task) { state.tasks.set(task.id, task); changed('tasks'); }
   function applyTaskRemove(taskId) { if (state.tasks.delete(taskId)) changed('tasks'); }
-  // geschlossene Besprechungen verschwinden
+  // geschlossene Besprechungen verschwinden; meeting.update trägt nur Metadaten → Nachrichten behalten
   function applyMeeting(meeting) {
     if (meeting.closedAt) {
       state.meetings.delete(meeting.id);
       if (state.meetingView === meeting.id) setMeetingView(null);
-    } else state.meetings.set(meeting.id, meeting);
+    } else {
+      const prev = state.meetings.get(meeting.id);
+      state.meetings.set(meeting.id, { ...meeting, messages: meeting.messages ?? prev?.messages ?? [] });
+    }
+    changed('meetings');
+  }
+  // neue Nachricht einer Besprechung (meeting.message)
+  function applyMeetingMessage({ meetingId, message }) {
+    const m = state.meetings.get(meetingId);
+    if (!m || m.messages?.some((x) => x.id === message.id)) return;
+    const messages = [...(m.messages ?? []), message].slice(-200);
+    state.meetings.set(meetingId, { ...m, messages });
     changed('meetings');
   }
   function setMeetingView(id) {
@@ -238,6 +249,7 @@ export function createStore() {
       case 'task.update': applyTask(msg.task); return true;
       case 'task.remove': applyTaskRemove(msg.taskId); return true;
       case 'meeting.update': applyMeeting(msg.meeting); return true;
+      case 'meeting.message': applyMeetingMessage(msg); return true;
       case 'tools.update': applyTools(msg.tools); return true;
       case 'pty.output': applyPtyOutput(msg); return true;
       case 'pty.exit': applyPtyExit(msg); return true;
@@ -248,7 +260,7 @@ export function createStore() {
   return {
     state, subscribe, now, agentList, dispatch, clear, chatOf,
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
-    applyPermission, applyPermissionResolved, applyTask, applyTaskRemove, applyMeeting, setMeetingView, openMeetings, applyChatHistory, applyTools, select, setConnection,
+    applyPermission, applyPermissionResolved, applyTask, applyTaskRemove, applyMeeting, applyMeetingMessage, setMeetingView, openMeetings, applyChatHistory, applyTools, select, setConnection,
     applyTerminalList, applyPtyOutput, applyPtyExit, upsertTerminal, onPty, terminalsOf,
   };
 }

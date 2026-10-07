@@ -144,14 +144,14 @@ export function createRepo(db) {
     id: m.id, role: m.role, ...(m.agent_id ? { agentId: m.agent_id } : {}), text: m.text, t: m.t,
     ...(m.target_ids ? { targetIds: parse(m.target_ids, []) } : {}),
   });
+  // limit 0: nur Metadaten (ohne Nachrichten)
   function rowToMeeting(r, limit = 200) {
     if (!r) return null;
-    const messages = q('SELECT * FROM (SELECT * FROM meeting_messages WHERE meeting_id = ? ORDER BY t DESC LIMIT ?) ORDER BY t')
+    const m = { id: r.id, title: r.title, participantIds: parse(r.participant_ids, []), createdAt: r.created_at, closedAt: r.closed_at };
+    if (!limit) return m;
+    m.messages = q('SELECT * FROM (SELECT rowid AS rn, * FROM meeting_messages WHERE meeting_id = ? ORDER BY t DESC, rowid DESC LIMIT ?) ORDER BY t, rn')
       .all(r.id, limit).map(rowToMeetingMessage);
-    return {
-      id: r.id, title: r.title, participantIds: parse(r.participant_ids, []), createdAt: r.created_at,
-      closedAt: r.closed_at, messages,
-    };
+    return m;
   }
   const meetings = {
     // open: nur nicht geschlossene
@@ -170,8 +170,11 @@ export function createRepo(db) {
       q('UPDATE meetings SET title = ?, participant_ids = ?, closed_at = ? WHERE id = ?')
         .run(title === undefined ? cur.title : title, participantIds ? JSON.stringify(participantIds) : cur.participant_ids,
           closed === undefined ? cur.closed_at ?? null : closed ? Date.now() : null, id);
-      return meetings.get(id);
+      return rowToMeeting(q('SELECT * FROM meetings WHERE id = ?').get(id), 0);
     },
+    // Beiträge von Besprechungen löschen, die vor `before` geschlossen wurden
+    purge: (before) => q(`DELETE FROM meeting_messages WHERE meeting_id IN
+      (SELECT id FROM meetings WHERE closed_at IS NOT NULL AND closed_at < ?)`).run(before).changes,
     addMessage(meetingId, m) {
       q('INSERT OR REPLACE INTO meeting_messages (id, meeting_id, role, agent_id, text, target_ids, t) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(m.id ?? randomUUID(), meetingId, m.role, m.agentId ?? null, m.text, m.targetIds ? JSON.stringify(m.targetIds) : null, m.t ?? Date.now());

@@ -23,7 +23,8 @@ const COLUMNS = [
 ];
 
 export class Board {
-  constructor(el, { store, onCreate, onUpdate, onAssign, onDelete, onSelect }) {
+  constructor(el, { store, onCreate, onUpdate, onAssign, onDelete, onSelect, toast = () => {} }) {
+    this.toast = toast;
     this.el = el;
     this.store = store;
     this.onCreate = onCreate;
@@ -95,10 +96,12 @@ export class Board {
       card.classList.add('dragging');
       this.dragId = card.dataset.task;
     });
-    this.cols.addEventListener('dragend', (e) => {
-      e.target.closest?.('[data-task]')?.classList.remove('dragging');
-      for (const c of this.cols.querySelectorAll('.b-col.over')) c.classList.remove('over');
+    // dragend auf document: kommt auch an, wenn die Karte inzwischen neu gezeichnet wurde
+    document.addEventListener('dragend', () => {
+      if (!this.dragId) return;
+      for (const c of this.cols.querySelectorAll('.dragging, .b-col.over')) c.classList.remove('dragging', 'over');
       this.dragId = null;
+      this.draw();
     });
     this.cols.addEventListener('dragover', (e) => {
       const col = e.target.closest('[data-col]');
@@ -119,6 +122,11 @@ export class Board {
       if (!col || !id) return;
       e.preventDefault();
       const t = this.store.state.tasks.get(id);
+      // „In Arbeit“/„Wartet“ nur mit Bearbeiter
+      if (t && !t.assigneeId && (col.dataset.col === 'active' || col.dataset.col === 'waiting')) {
+        this.toast('Erst einen Bearbeiter zuweisen (Avatar-Knopf auf der Karte)', 'warn');
+        return;
+      }
       if (t && t.status !== col.dataset.col) {
         // sofort anzeigen, Server bestätigt per task.update
         this.store.applyTask({ ...t, status: col.dataset.col });
@@ -137,6 +145,7 @@ export class Board {
   render() { if (this.isOpen) this.draw(); }
 
   draw() {
+    if (this.dragId) return; // während des Ziehens nicht neu aufbauen (sonst bricht der Drag ab)
     const tasks = [...this.store.state.tasks.values()].sort((x, y) => (y.updatedAt ?? 0) - (x.updatedAt ?? 0));
     const sel = this.store.state.selected;
     const now = this.store.now();
