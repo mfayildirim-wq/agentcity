@@ -561,6 +561,25 @@ export class World {
     for (const a of agents) {
       let av = this.avatars.get(a.id);
       const room = this.rooms.get(a.project);
+      // Aussehen geändert (Farbe/Stil des Tools): Figur an gleicher Stelle neu aufbauen
+      if (av && !av.leaving && av.look !== Avatar.lookOf(a)) {
+        const old = av;
+        av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k) });
+        Object.assign(av, { room: old.room, selected: old.selected, hovered: old.hovered, path: old.path, facing: old.facing,
+          targetFacing: old.targetFacing, atStation: old.atStation, atLounge: old.atLounge, slotKey: old.slotKey,
+          stationId: old.stationId, opacity: 1 });
+        // Ankunft der alten Figur auf die neue übertragen
+        const nav = av;
+        if (old.arrive) av.arrive = () => { old.arrive(); nav.atStation = old.atStation; nav.atLounge = old.atLounge; };
+        av.group.position.copy(old.group.position);
+        av.group.rotation.y = old.facing;
+        av.setOpacity(1);
+        av.setLabelsVisible(this.labelsVisible);
+        old.group.parent?.add(av.group);
+        old.group.parent?.remove(old.group);
+        old.dispose();
+        this.avatars.set(a.id, av);
+      }
       if (!av) {
         av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k) });
         av.room = room;

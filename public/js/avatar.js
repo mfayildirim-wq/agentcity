@@ -1,7 +1,7 @@
 // Stilisierte Figur aus Grundkörpern – leicht, schattenwerfend, animierbar.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { agentColor, skinTone, hairTone, hash, STATUS, STATIONS, agentName } from './config.js';
+import { agentColor, avatarStyle, skinTone, hairTone, hash, STATUS, STATIONS, agentName } from './config.js';
 
 const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 6, 12);
 const GEO = {
@@ -17,6 +17,15 @@ const GEO = {
   disc: new THREE.CircleGeometry(0.42, 32),
   gem: new THREE.OctahedronGeometry(0.13, 0),
   badge: new THREE.CylinderGeometry(0.07, 0.07, 0.02, 16),
+  // Figurenstile je Tool (dezent, aus Grundkörpern)
+  capCrown: new THREE.SphereGeometry(0.218, 24, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+  capBand: new THREE.CylinderGeometry(0.219, 0.219, 0.035, 24, 1, true),
+  capBrim: new THREE.CylinderGeometry(0.17, 0.17, 0.016, 24, 1, false, -Math.PI / 2, Math.PI),
+  hood: new THREE.SphereGeometry(0.248, 24, 14, 0, Math.PI * 2, 0, Math.PI * 0.64),
+  hoodRim: new THREE.TorusGeometry(0.2, 0.03, 8, 28),
+  scarf: new THREE.TorusGeometry(0.135, 0.05, 10, 28),
+  scarfEnd: new THREE.BoxGeometry(0.075, 0.2, 0.035),
+  visor: new THREE.CylinderGeometry(0.207, 0.207, 0.07, 28, 1, true, -1.15, 2.3),
 };
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.72, metalness: 0.02, ...extra });
@@ -47,7 +56,11 @@ export class Avatar {
 
   m(color, extra) { const x = mat(color, extra); this.materials.push(x); return x; }
 
+  // Aussehen (Farbe + Stil): ändert es sich (Tool-Einstellungen), baut die Welt die Figur neu
+  static lookOf(a) { return `${agentColor(a)}|${a.kind === 'main' ? avatarStyle(a) : 'sub'}`; }
+
   build(a) {
+    this.look = Avatar.lookOf(a);
     const shirt = new THREE.Color(agentColor(a));
     const pants = shirt.clone().lerp(new THREE.Color('#2a2f3a'), a.kind === 'main' ? 0.78 : 0.7);
     const skin = this.m(skinTone(a.id));
@@ -108,12 +121,10 @@ export class Avatar {
     body.add(head);
     this.head = head;
 
-    // Abzeichen auf der Brust: Hauptagent orange Raute, Subagent Typfarbe
+    // Hauptagent: Figurenstil seines Tools; Subagent: Abzeichen auf der Brust
     if (a.kind === 'main') {
-      const gem = new THREE.Mesh(GEO.gem, this.m('#d97757', { emissive: '#d97757', emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.2 }));
-      gem.position.y = 2.12;
-      this.group.add(gem);
-      this.gem = gem;
+      this.style = avatarStyle(a);
+      this.buildStyle(this.style, shirt, { head, body, hairCap: cap });
     } else {
       const badge = new THREE.Mesh(GEO.badge, this.m('#ffffff', { emissive: '#ffffff', emissiveIntensity: 0.25 }));
       badge.rotation.x = Math.PI / 2;
@@ -146,6 +157,59 @@ export class Avatar {
       }
     });
     this.setOpacity(0);
+  }
+
+  // gem: schwebende Raute · cap: Schirmmütze · hoodie: Kapuze · scarf: Schal · visor: dunkler Augenstreifen
+  buildStyle(style, color, { head, body, hairCap }) {
+    const c = new THREE.Color(color);
+    const darker = c.clone().lerp(new THREE.Color('#1c2029'), 0.35);
+    const lighter = c.clone().lerp(new THREE.Color('#ffffff'), 0.45);
+    if (style === 'cap') {
+      const m = this.m(darker, { roughness: 0.8 });
+      const crown = new THREE.Mesh(GEO.capCrown, m);
+      crown.position.set(0, 0.03, -0.01);
+      crown.scale.set(1.04, 0.98, 1.06);
+      const band = new THREE.Mesh(GEO.capBand, this.m(lighter, { roughness: 0.7 }));
+      band.position.set(0, 0.045, -0.01);
+      band.scale.set(1.04, 1, 1.06);
+      const brim = new THREE.Mesh(GEO.capBrim, m);
+      brim.position.set(0, 0.04, 0.15);
+      brim.scale.set(1, 1, 1.15);
+      brim.rotation.x = 0.12;
+      head.add(crown, band, brim);
+    } else if (style === 'hoodie') {
+      const m = this.m(c.clone().lerp(new THREE.Color('#2a2f3a'), 0.12), { roughness: 0.9 });
+      const hood = new THREE.Mesh(GEO.hood, m);
+      hood.rotation.x = -0.62;
+      hood.position.set(0, 0.0, -0.035);
+      const rim = new THREE.Mesh(GEO.hoodRim, m);
+      rim.position.set(0, 0.03, 0.06);
+      rim.rotation.x = -0.62;
+      rim.scale.set(1.02, 1.08, 1);
+      hairCap.visible = false;
+      head.add(hood, rim);
+    } else if (style === 'scarf') {
+      const m = this.m(lighter, { roughness: 0.85 });
+      const ring = new THREE.Mesh(GEO.scarf, m);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = 1.39;
+      ring.scale.set(1, 0.86, 1);
+      const end = new THREE.Mesh(GEO.scarfEnd, m);
+      end.position.set(0.085, 1.27, 0.165);
+      end.rotation.set(-0.12, 0, 0.12);
+      body.add(ring, end);
+    } else if (style === 'visor') {
+      const band = new THREE.Mesh(GEO.visor, this.m('#14171d', {
+        roughness: 0.22, metalness: 0.55, emissive: c, emissiveIntensity: 0.18, side: THREE.DoubleSide,
+      }));
+      band.position.y = 0.015;
+      head.add(band);
+    } else {
+      const gem = new THREE.Mesh(GEO.gem, this.m(c, { emissive: c, emissiveIntensity: 0.55, roughness: 0.35, metalness: 0.2 }));
+      gem.position.y = 2.12;
+      this.group.add(gem);
+      this.gem = gem;
+    }
   }
 
   buildLabel(a, onClick) {

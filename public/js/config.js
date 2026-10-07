@@ -46,10 +46,25 @@ export function subColor(type) { return SUB_COLORS[hash(type || 'agent') % SUB_C
 export function skinTone(key) { return SKIN[hash(key + 's') % SKIN.length]; }
 export function hairTone(key) { return HAIR[hash(key + 'h') % HAIR.length]; }
 
-export function agentColor(a) { return a.kind === 'main' ? CLAUDE_ORANGE : subColor(a.agentType); }
+// Tool-Liste aus dem Snapshot (Farbe, Figurenstil je Tool); main.js setzt sie bei jeder Änderung
+let TOOLS = new Map();
+export function setTools(tools = []) { TOOLS = new Map(tools.map((t) => [t.id, t])); }
+export const toolOf = (a) => (a?.toolId ? TOOLS.get(a.toolId) ?? null : null);
+
+// Hauptagenten in der Farbe ihres Tools, Subagenten in ihrer Typfarbe
+export function agentColor(a) {
+  if (a.kind !== 'main') return subColor(a.agentType);
+  return toolOf(a)?.color || CLAUDE_ORANGE;
+}
+
+export const AVATAR_STYLES = ['gem', 'cap', 'hoodie', 'scarf', 'visor'];
+export function avatarStyle(a) {
+  const s = toolOf(a)?.avatarStyle;
+  return AVATAR_STYLES.includes(s) ? s : 'gem';
+}
 
 export function agentName(a) {
-  if (a.kind === 'main') return a.title || (a.source === 'acp' ? a.agentName || 'Agent' : 'Claude');
+  if (a.kind === 'main') return a.title || (a.source === 'acp' ? a.agentName || 'Agent' : toolOf(a)?.name || 'Claude');
   return a.description || a.agentType || 'Subagent';
 }
 

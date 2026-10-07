@@ -14,6 +14,7 @@ import sessionHandlers from './api/handlers/session.js';
 import permissionHandlers from './api/handlers/permission.js';
 import fsHandlers from './api/handlers/fs.js';
 import settingsHandlers from './api/handlers/settings.js';
+import chatHandlers from './api/handlers/chat.js';
 import { createRegistry } from './agents/registry.js';
 import { createSessionManager } from './acp/manager.js';
 
@@ -33,7 +34,7 @@ const ws = attachWs({
   server,
   token: config.token,
   ctx: { state, bus, repo, registry, acp, pty: null, config },
-  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers),
+  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers),
 });
 
 server.on('error', (err) => {

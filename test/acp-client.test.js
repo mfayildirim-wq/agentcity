@@ -139,3 +139,11 @@ test('Unbekannter Befehl → exit mit Fehler', async () => {
   const ex = await exited;
   assert.match(ex.error ?? '', /ENOENT|nicht gefunden/);
 });
+
+test('rpcErrorMessage holt die Ursache aus data.message', async () => {
+  const { rpcErrorMessage } = await import('../server/acp/client.js');
+  assert.equal(rpcErrorMessage({ message: 'Internal error', data: { message: '{"type":"error","error":{"message":"Modell nicht unterstützt"}}' } }),
+    'Internal error: Modell nicht unterstützt');
+  assert.equal(rpcErrorMessage({ message: 'Internal error', data: { details: 'kaputt' } }), 'Internal error: kaputt');
+  assert.equal(rpcErrorMessage(new Error('einfach')), 'einfach');
+});

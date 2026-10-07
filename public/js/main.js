@@ -11,6 +11,8 @@ import { toast, showBanner, hideBanner } from './ui/toast.js';
 import { ChatBar } from './ui/chat.js';
 import { PermissionStack } from './ui/permission.js';
 import { NewSessionDialog } from './ui/newsession.js';
+import { SettingsPanel } from './ui/settings.js';
+import { setTools } from './config.js';
 
 const params = new URLSearchParams(location.search);
 const store = createStore();
@@ -61,6 +63,19 @@ const newSession = new NewSessionDialog($('newsession'), {
   onCreated: (agentId) => select(agentId),
 });
 
+const settings = new SettingsPanel($('settings'), { request: quiet, toast });
+
+// Chatverlauf aus der DB nachladen (z. B. nach Neuladen der Seite), einmal je Agent
+const historyLoaded = new Set();
+function loadChatHistory(id) {
+  const a = id && store.state.agents.get(id);
+  if (!a || a.source !== 'acp' || a.kind !== 'main' || historyLoaded.has(id) || store.state.connection !== 'live') return;
+  historyLoaded.add(id);
+  quiet('chat.history', { agentId: id, limit: 200 })
+    .then((res) => store.applyChatHistory(id, res.messages))
+    .catch(() => historyLoaded.delete(id));
+}
+
 // Detailkarte: Session beenden / neu starten
 async function sessionAction(kind, a) {
   try {
@@ -77,14 +92,19 @@ if (params.has('debug')) window.__arena = { world, store };
 
 // ---------------------------------------------------------------- Store → Oberfläche
 store.subscribe((s, changes) => {
+  // Tool-Farben/-Stile vor dem Abgleich der Figuren setzen
+  if (changes.has('tools')) {
+    setTools(s.tools);
+    if (newSession.isOpen) newSession.drawTools();
+  }
   const agents = store.agentList();
-  if (changes.has('agents')) {
+  if (changes.has('agents') || changes.has('tools')) {
     world.sync(agents);
     renderStats(statsEl, agents);
     emptyEl.classList.toggle('hidden', agents.length > 0);
   }
-  if (changes.has('selected')) world.select(s.selected);
-  if (changes.has('agents') || changes.has('selected') || changes.has('diffs')) {
+  if (changes.has('selected')) { world.select(s.selected); loadChatHistory(s.selected); }
+  if (changes.has('agents') || changes.has('selected') || changes.has('diffs') || changes.has('tools')) {
     list.render(agents, s.selected);
     detail.render(agents, s.selected, store.now);
     if (changes.has('selected')) list.scrollTo(s.selected);
@@ -144,6 +164,11 @@ const openNew = () => {
 };
 $('btn-new').addEventListener('click', openNew);
 $('btn-empty-new').addEventListener('click', openNew);
+$('btn-settings').addEventListener('click', () => {
+  if (liveState !== 'live') { toast('Keine Verbindung zum Server', 'warn'); return; }
+  if (newSession.isOpen) newSession.close();
+  settings.toggle();
+});
 $('btn-legend').addEventListener('click', (e) => {
   const el = $('legend');
   el.classList.toggle('hidden');
@@ -164,10 +189,10 @@ window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea, [contenteditable]')) return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === 'Escape') {
-    if (newSession.isOpen) newSession.close(); else select(null);
+    if (settings.isOpen) settings.close(); else if (newSession.isOpen) newSession.close(); else select(null);
   }
   if (e.key === 'r') { select(null); world.resetView(); }
-  if (e.key === 'n' && !newSession.isOpen && !perms.list.length) { e.preventDefault(); openNew(); }
+  if (e.key === 'n' && !newSession.isOpen && !settings.isOpen && !perms.list.length) { e.preventDefault(); openNew(); }
 });
 
 function updateInset() {

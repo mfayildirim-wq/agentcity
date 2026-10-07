@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ARENA_DIR } from '../config.js';
-import { AcpClient } from '../acp/client.js';
+import { AcpClient, rpcErrorMessage } from '../acp/client.js';
 import { withTimeout } from '../acp/manager.js';
 
 const DEFAULTS_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'default-agents.json');
@@ -208,7 +208,7 @@ export function createRegistry({
       };
     } catch (err) {
       const tail = client.stderrTail?.(6);
-      return { ok: false, error: err?.message || String(err), stderrTail: tail || null };
+      return { ok: false, error: rpcErrorMessage(err), stderrTail: tail || null };
     } finally {
       await Promise.race([client.stop(), new Promise((r) => setTimeout(r, 3000))]);
     }

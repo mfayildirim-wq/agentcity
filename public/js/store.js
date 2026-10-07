@@ -53,7 +53,7 @@ export function createStore() {
     state.tasks = toMap(snap.tasks);
     state.meetings = toMap(snap.meetings);
     state.permissions = toMap(snap.permissions);
-    if (snap.tools) state.tools = snap.tools;
+    if (snap.tools) { state.tools = snap.tools; changed('tools'); }
     if (state.selected && !state.agents.has(state.selected)) select(null);
     changed('agents'); changed('tasks'); changed('meetings'); changed('permissions');
   }
@@ -116,6 +116,21 @@ export function createStore() {
     changed('chats');
   }
 
+  // gespeicherter Verlauf (nach Neuladen): vor die live empfangenen Nachrichten setzen
+  function applyChatHistory(agentId, messages = []) {
+    const chat = chatOf(agentId);
+    const first = chat[0]?.t ?? Infinity;
+    const ids = new Set(chat.map((m) => m.id));
+    const older = messages.filter((m) => !ids.has(m.id) && (m.t ?? 0) < first).map((m) => ({ ...m, done: true }));
+    if (!older.length) return false;
+    chat.unshift(...older);
+    if (chat.length > MAX_CHAT) chat.splice(0, chat.length - MAX_CHAT);
+    changed('chats');
+    return true;
+  }
+
+  function applyTools(tools = []) { state.tools = tools; changed('tools'); }
+
   function applyPermission(permission) { state.permissions.set(permission.id, permission); changed('permissions'); }
   function applyPermissionResolved(permissionId) { state.permissions.delete(permissionId); changed('permissions'); }
   function applyTask(task) { state.tasks.set(task.id, task); changed('tasks'); }
@@ -156,6 +171,7 @@ export function createStore() {
       case 'permission.resolved': applyPermissionResolved(msg.permissionId); return true;
       case 'task.update': applyTask(msg.task); return true;
       case 'meeting.update': applyMeeting(msg.meeting); return true;
+      case 'tools.update': applyTools(msg.tools); return true;
       default: return false;
     }
   }
@@ -163,6 +179,6 @@ export function createStore() {
   return {
     state, subscribe, now, agentList, dispatch, clear, chatOf,
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
-    applyPermission, applyPermissionResolved, applyTask, applyMeeting, select, setConnection,
+    applyPermission, applyPermissionResolved, applyTask, applyMeeting, applyChatHistory, applyTools, select, setConnection,
   };
 }

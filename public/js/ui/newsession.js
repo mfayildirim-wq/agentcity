@@ -23,7 +23,10 @@ export class NewSessionDialog {
     el.addEventListener('click', (e) => {
       if (e.target === el || e.target.closest('[data-close]')) { this.close(); return; }
       const tool = e.target.closest('[data-tool]');
-      if (tool) { this.toolId = tool.dataset.tool; this.drawTools(); return; }
+      if (tool) {
+        if (tool.getAttribute('aria-disabled') === 'true') { this.toast(`${tool.title}`, 'warn'); return; }
+        this.toolId = tool.dataset.tool; this.drawTools(); return;
+      }
       const mode = e.target.closest('[data-mode]');
       if (mode) { this.mode = mode.dataset.mode; this.drawMode(); return; }
       const dir = e.target.closest('[data-dir]');
@@ -43,7 +46,8 @@ export class NewSessionDialog {
 
   open() {
     const tools = this.store.state.tools;
-    if (!tools.some((t) => t.id === this.toolId)) this.toolId = tools[0]?.id ?? null;
+    const usable = (t) => t && t.installed !== false;
+    if (!usable(tools.find((t) => t.id === this.toolId))) this.toolId = tools.find(usable)?.id ?? null;
     this.returnFocus = document.activeElement;
     this.el.classList.remove('hidden');
     this.build();
@@ -135,8 +139,13 @@ export class NewSessionDialog {
     const box = this.el.querySelector('.ns-tools');
     if (!box) return;
     const tools = this.store.state.tools;
-    box.innerHTML = tools.length ? tools.map((t) => `<button class="ns-tool ${t.id === this.toolId ? 'on' : ''}" data-tool="${esc(t.id)}" role="radio" aria-checked="${t.id === this.toolId}" title="${esc(t.name)}">
-        <span class="av sm" style="--c:${esc(t.color || '#8a94a6')}">${DIAMOND}</span><span>${esc(t.name)}</span></button>`).join('')
+    // nicht installierte Tools ausgegraut; Hinweis im Tooltip bzw. als Meldung beim Klick
+    box.innerHTML = tools.length ? tools.map((t) => {
+      const off = t.installed === false;
+      const title = off ? `${t.name} ist nicht installiert – Befehl in den Einstellungen prüfen` : t.name;
+      return `<button class="ns-tool ${t.id === this.toolId ? 'on' : ''} ${off ? 'off' : ''}" data-tool="${esc(t.id)}" role="radio" aria-checked="${t.id === this.toolId}" aria-disabled="${off}" title="${esc(title)}">
+        <span class="av sm" style="--c:${esc(t.color || '#8a94a6')}">${DIAMOND}</span><span>${esc(t.name)}</span>${off ? '<em>fehlt</em>' : ''}</button>`;
+    }).join('')
       : '<span class="ns-none">Keine Tools konfiguriert</span>';
     this.drawButton();
   }

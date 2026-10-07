@@ -2,6 +2,7 @@
 // erkennt Subagenten und verwaltet Berechtigungsanfragen.
 import { randomUUID } from 'node:crypto';
 import { createAgent, createEvent, createPermission, kindToCategory } from '../core/model.js';
+import { rpcErrorMessage } from './client.js';
 
 const MAX_AGENT_EVENTS = 20;
 const MAX_DIFF_TEXT = 64 * 1024;
@@ -397,7 +398,7 @@ export function createAcpSession({
       await Promise.race([client.closed, new Promise((r) => { wait = setTimeout(r, 300); wait.unref?.(); })]);
       clearTimeout(wait);
       if (!client.running || closing) return { stopReason: 'error' };
-      const msg = err?.message || String(err);
+      const msg = rpcErrorMessage(err);
       patch({ status: 'error', error: { message: msg, stderrTail: client.stderrTail?.(20) ?? '' } });
       emitEvent('error', { message: msg, label: trunc(msg, 90) });
       bus.emit('toast', { level: 'error', text: `${get().title || 'Agent'}: ${trunc(msg, 140)}` });

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { createAgent } from '../core/model.js';
-import { AcpClient } from './client.js';
+import { AcpClient, rpcErrorMessage } from './client.js';
 import { createAcpSession } from './session.js';
 
 export const MODES = ['confirm', 'auto']; // Arena-Modus: Rückfragen bestätigen oder automatisch freigeben
@@ -88,7 +88,7 @@ export function createSessionManager({
       entryData.ownsSession = true;
       return id;
     } catch (err) {
-      const msg = err?.message || String(err);
+      const msg = rpcErrorMessage(err);
       // während des Starts geschlossen: aufräumen, keinen Agenten wieder anlegen
       if (closedDuringStart()) {
         session.close();

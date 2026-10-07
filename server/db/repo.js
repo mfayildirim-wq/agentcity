@@ -99,6 +99,12 @@ export function createRepo(db) {
       .run(m.id ?? randomUUID(), m.sessionId ?? null, m.agentId ?? null, m.meetingId ?? null, m.role, m.text, m.t ?? Date.now());
   }
 
+  // letzte Nachrichten eines Agenten (älteste zuerst), für den Chatverlauf nach einem Neuladen
+  function messagesForAgent(agentId, limit = 100) {
+    return q('SELECT * FROM (SELECT * FROM messages WHERE agent_id = ? ORDER BY t DESC LIMIT ?) ORDER BY t').all(agentId, limit)
+      .map((m) => ({ id: m.id, role: m.role, text: m.text, t: m.t, ...(m.meeting_id ? { meetingId: m.meeting_id } : {}) }));
+  }
+
   function insertPermission(p, sessionId = null) {
     q(`INSERT OR REPLACE INTO permissions (id, session_id, agent_id, t, title, kind, raw_input) VALUES (?, ?, ?, ?, ?, ?, ?)`)
       .run(p.id, sessionId, p.agentId, p.t ?? Date.now(), p.title, p.kind, json(p.rawInput));
@@ -182,6 +188,6 @@ export function createRepo(db) {
   return {
     db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, setSessionAcpId, setSessionMode, recentProjects,
     getSession, endSession,
-    upsertAgent, getAgent, insertEvents, insertMessage, insertPermission, resolvePermission, tasks, meetings, history,
+    upsertAgent, getAgent, insertEvents, insertMessage, messagesForAgent, insertPermission, resolvePermission, tasks, meetings, history,
   };
 }

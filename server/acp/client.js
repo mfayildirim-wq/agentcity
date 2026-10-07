@@ -10,6 +10,18 @@ import { createTerminalHandlers } from './terminal.js';
 const STDERR_LINES = 200;
 const CLIENT_INFO = { name: 'agent-arena', title: 'Agent Arena', version: '0.2.0' };
 
+// JSON-RPC-Fehler lesbar machen: „Internal error“ trägt die eigentliche Ursache oft in data.message
+// (bei Codex als JSON-Text { error: { message } })
+export function rpcErrorMessage(err) {
+  const base = err?.message || String(err);
+  let detail = err?.data?.message ?? err?.data?.details ?? (typeof err?.data === 'string' ? err.data : null);
+  if (typeof detail === 'string') {
+    try { const j = JSON.parse(detail); detail = j?.error?.message ?? j?.message ?? detail; } catch { /* kein JSON */ }
+  }
+  if (typeof detail !== 'string' || !detail.trim() || detail === base) return base;
+  return `${base}: ${detail.trim().slice(0, 500)}`;
+}
+
 export class AcpClient extends EventEmitter {
   constructor({ tool, cwd, env = {}, terminal = createTerminalHandlers() }) {
     super();

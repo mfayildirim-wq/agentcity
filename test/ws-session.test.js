@@ -11,6 +11,7 @@ import { createHandlers } from '../server/api/handlers/index.js';
 import sessionHandlers from '../server/api/handlers/session.js';
 import permissionHandlers from '../server/api/handlers/permission.js';
 import fsHandlers from '../server/api/handlers/fs.js';
+import chatHandlers from '../server/api/handlers/chat.js';
 import { createBus } from '../server/core/bus.js';
 import { createState } from '../server/core/state.js';
 import { openDb } from '../server/db/migrate.js';
@@ -39,7 +40,7 @@ before(async () => {
   wsApi = attachWs({
     server, token: TOKEN,
     ctx: { state, bus, repo, registry, acp: manager, pty: null, config },
-    handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers),
+    handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, chatHandlers),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   port = server.address().port;
@@ -127,6 +128,14 @@ test('session.create → agent.update; prompt → permission.request; answer →
   assert.ok(ws.queue.some((m) => m.type === 'event' && m.event.kind === 'diff'));
 
   await assert.rejects(() => ws.request('permission.answer', { permissionId: req.permission.id, optionId: 'allow' }), /nicht \(mehr\) offen/);
+
+  // gespeicherter Verlauf (für den Browser nach einem Neuladen)
+  const hist = await ws.request('chat.history', { agentId });
+  assert.deepEqual(hist.messages.map((m) => m.role), ['user', 'agent']);
+  assert.equal(hist.messages[0].text, 'hi');
+  assert.match(hist.messages[1].text, /fertig\./);
+  assert.equal((await ws.request('chat.history', { agentId, limit: 1 })).messages[0].role, 'agent');
+  await assert.rejects(() => ws.request('chat.history', {}), /agentId/);
   await ws.request('session.setMode', { agentId, modeId: 'auto' });
   await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.mode === 'auto');
   await ws.request('session.setArenaMode', { agentId, arenaMode: 'auto' });
