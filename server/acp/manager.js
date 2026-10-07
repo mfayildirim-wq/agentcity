@@ -120,7 +120,15 @@ export function createSessionManager({
   }
 
   // Watcher-Agent (externe Session) durch steuerbaren ACP-Agenten ersetzen
+  const adopting = new Set(); // Watcher-Agent-Ids, deren Übernahme gerade läuft
+
   async function adopt(watchAgentId) {
+    if (adopting.has(watchAgentId)) throw new Error('Session wird bereits übernommen');
+    adopting.add(watchAgentId);
+    try { return await adoptNow(watchAgentId); } finally { adopting.delete(watchAgentId); }
+  }
+
+  async function adoptNow(watchAgentId) {
     const w = state.get(watchAgentId);
     if (!w) throw new Error('Agent nicht gefunden');
     if (w.source !== 'watch' || w.kind !== 'main') throw new Error('Nur externe Hauptsessions lassen sich übernehmen');
@@ -137,6 +145,10 @@ export function createSessionManager({
     });
     // Watcher-Agent samt Subagenten entfernen; der Watcher überspringt die Session künftig (acpSessionId)
     for (const a of state.all()) if (a.source === 'watch' && (a.id === w.id || a.parentId === w.id)) state.remove(a.id);
+    bus?.emit('toast', {
+      level: 'warn',
+      text: `${w.title || 'Session'} fortgesetzt – die laufende CLI-Sitzung sollte beendet werden, sonst schreiben zwei Prozesse`,
+    });
     return id;
   }
 

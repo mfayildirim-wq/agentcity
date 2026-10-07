@@ -1,10 +1,13 @@
 // Agentenliste rechts, gruppiert nach Projekt, Subagenten eingerückt unter ihrem Erzeuger
 import { STATIONS, STATUS, agentColor, agentName } from '../config.js';
-import { esc, DIAMOND } from './common.js';
+import { esc, DIAMOND, ICON } from './common.js';
+import { svgIcon } from '../config.js';
 
 export class AgentList {
-  constructor(el, { onSelect, onHover }) {
+  constructor(el, { onSelect, onHover, onAdopt = () => {} }) {
     this.el = el;
+    this.onAdopt = onAdopt;
+    this.adopting = new Set();
     this.onSelect = onSelect;
     this.onHover = onHover;
     this.agents = [];
@@ -17,6 +20,15 @@ export class AgentList {
         const k = tog.dataset.toggle;
         this.collapsed.has(k) ? this.collapsed.delete(k) : this.collapsed.add(k);
         this.draw();
+        return;
+      }
+      const adopt = e.target.closest('[data-adopt]');
+      if (adopt) {
+        const id = adopt.dataset.adopt;
+        if (this.adopting.has(id)) return;
+        this.adopting.add(id);
+        this.draw();
+        Promise.resolve(this.onAdopt(id)).finally(() => { this.adopting.delete(id); this.draw(); });
         return;
       }
       const row = e.target.closest('[data-id]');
@@ -68,6 +80,9 @@ export class AgentList {
       }
       html += '</div>';
     }
+    // nur bei Änderung neu bauen (sonst gehen Klicks auf Knöpfe zwischen mousedown und mouseup verloren)
+    if (html === this.html) return;
+    this.html = html;
     this.el.innerHTML = html;
   }
 
@@ -80,6 +95,7 @@ export class AgentList {
     return `<div class="row ${a.id === this.selected ? 'sel' : ''} ${a.status}" data-id="${esc(a.id)}" style="--d:${depth}">
       <span class="av" style="--c:${agentColor(a)}">${a.kind === 'main' ? DIAMOND : ''}</span>
       <span class="row-main"><span class="row-name">${esc(agentName(a))}</span><span class="row-sub">${sub}</span></span>
+      ${a.adoptable && a.source === 'watch' ? `<button class="adopt-btn" data-adopt="${esc(a.id)}" title="Übernehmen – in der Arena fortsetzen" ${this.adopting.has(a.id) ? 'disabled' : ''}>${svgIcon(ICON.adopt)}</button>` : ''}
       <span class="pulse" style="--c:${color}"></span>
     </div>`;
   }

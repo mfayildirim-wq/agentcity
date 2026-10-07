@@ -220,8 +220,14 @@ test('Fehlerfälle beim Start', async () => {
 test('adopt: Watcher-Agent wird durch steuerbaren ersetzt (loadSession)', async () => {
   const w = createAgent({ id: 'w:fake:ext-7', toolId: 'fake', sessionId: 'ext-7', acpSessionId: 'ext-7', project: 'p', cwd, source: 'watch', controllable: false });
   state.upsert(w);
-  const id = await manager.adopt(w.id);
+  const pending = manager.adopt(w.id);
+  await assert.rejects(() => manager.adopt(w.id), /bereits übernommen/, 'Doppelklick startet keinen zweiten Prozess');
+  const id = await pending;
   assert.equal(state.get(w.id), undefined);
+  const hint = seen.find((m) => m.type === 'toast' && /fortgesetzt/.test(m.text));
+  assert.equal(hint.level, 'warn');
+  assert.match(hint.text, /CLI-Sitzung sollte beendet werden/);
+  assert.equal(state.get(id).cwd, cwd, 'läuft im Ordner der externen Session');
   const a = state.get(id);
   assert.equal(a.sessionId, 'ext-7');
   assert.equal(a.acpSessionId, 'ext-7');
