@@ -2,6 +2,7 @@
 const MAX_EVENTS = 40;
 const MAX_CHAT = 400;
 const MAX_DIFFS = 60;
+const MAX_TERM_DATA = 64 * 1024; // wie der Ringpuffer des Servers
 
 export function createStore() {
   const state = {
@@ -12,11 +13,13 @@ export function createStore() {
     tools: [],
     chats: {}, // agentId → [{ id, role, text, t, done }]
     diffs: {}, // agentId → [Diff-Ereignis mit oldText/newText] (Server-Agenten tragen nur kompakte Ereignisse)
+    terminals: new Map(), // ptyId → { ptyId, agentId, ownerId, kind, command, t, exited, exitCode, signal, data }
     selected: null,
     connection: 'off', // live | off | demo
     clockOffset: 0, // Serverzeit − Browserzeit
   };
   const subs = new Set();
+  const ptySubs = new Set(); // Terminal-Ausgabe geht direkt an die xterm-Ansichten (ohne Neuzeichnen)
   let changes = new Set();
   let scheduled = false;
 
@@ -74,10 +77,15 @@ export function createStore() {
     if (state.selected === agentId) select(null);
     delete state.chats[agentId];
     delete state.diffs[agentId];
+    for (const [k, t] of state.terminals) if ((t.ownerId ?? t.agentId) === agentId) state.terminals.delete(k);
     changed('agents');
   }
 
   function applyEvent(event) {
+    if (event.kind === 'terminal' && event.ptyId) {
+      const owner = state.agents.get(event.agentId)?.parentId ?? event.agentId;
+      upsertTerminal({ ptyId: event.ptyId, agentId: event.agentId, ownerId: owner, kind: event.display ? 'display' : 'agent', command: event.command, t: event.t });
+    }
     if (event.kind === 'diff') {
       const list = (state.diffs[event.agentId] ??= []);
       if (!list.some((d) => d.id === event.id)) {
@@ -131,6 +139,39 @@ export function createStore() {
 
   function applyTools(tools = []) { state.tools = tools; changed('tools'); }
 
+  // ---------------------------------------------------------------- Terminals
+  function upsertTerminal(t) {
+    const prev = state.terminals.get(t.ptyId);
+    state.terminals.set(t.ptyId, { data: '', exited: false, exitCode: null, signal: null, ...prev, ...t });
+    changed('terminals');
+  }
+
+  // Liste vom Server (pty.list) – ersetzt Puffer und Status
+  function applyTerminalList(agentId, list = []) {
+    for (const t of list) state.terminals.set(t.ptyId, { ...t, data: t.data ?? '' });
+    changed('terminals');
+  }
+
+  function applyPtyOutput({ ptyId, data }) {
+    const t = state.terminals.get(ptyId);
+    if (t) {
+      t.data += data;
+      if (t.data.length > MAX_TERM_DATA * 1.5) t.data = t.data.slice(-MAX_TERM_DATA);
+    }
+    for (const fn of ptySubs) fn({ type: 'output', ptyId, data });
+  }
+
+  function applyPtyExit({ ptyId, code, signal }) {
+    const t = state.terminals.get(ptyId);
+    if (t) { t.exited = true; t.exitCode = code ?? null; t.signal = signal ?? null; changed('terminals'); }
+    for (const fn of ptySubs) fn({ type: 'exit', ptyId, code, signal });
+  }
+
+  const onPty = (fn) => { ptySubs.add(fn); return () => ptySubs.delete(fn); };
+  const terminalsOf = (agentId) => [...state.terminals.values()]
+    .filter((t) => t.kind !== 'user' && (t.ownerId === agentId || t.agentId === agentId))
+    .sort((x, y) => (x.t ?? 0) - (y.t ?? 0));
+
   function applyPermission(permission) { state.permissions.set(permission.id, permission); changed('permissions'); }
   function applyPermissionResolved(permissionId) { state.permissions.delete(permissionId); changed('permissions'); }
   function applyTask(task) { state.tasks.set(task.id, task); changed('tasks'); }
@@ -154,6 +195,7 @@ export function createStore() {
     state.permissions = new Map();
     state.chats = {};
     state.diffs = {};
+    state.terminals = new Map();
     select(null);
     changed('agents');
   }
@@ -172,6 +214,8 @@ export function createStore() {
       case 'task.update': applyTask(msg.task); return true;
       case 'meeting.update': applyMeeting(msg.meeting); return true;
       case 'tools.update': applyTools(msg.tools); return true;
+      case 'pty.output': applyPtyOutput(msg); return true;
+      case 'pty.exit': applyPtyExit(msg); return true;
       default: return false;
     }
   }
@@ -180,5 +224,6 @@ export function createStore() {
     state, subscribe, now, agentList, dispatch, clear, chatOf,
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
     applyPermission, applyPermissionResolved, applyTask, applyMeeting, applyChatHistory, applyTools, select, setConnection,
+    applyTerminalList, applyPtyOutput, applyPtyExit, upsertTerminal, onPty, terminalsOf,
   };
 }

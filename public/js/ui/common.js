@@ -31,6 +31,8 @@ export const ICON = {
   test: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 14h9',
   trash: 'M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6',
   x: 'M6 6l12 12M18 6 6 18',
+  terminal: 'M4 17l6-5-6-5M12 19h8',
+  adopt: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3',
 };
 
 // Kurze Zeitangabe hh:mm

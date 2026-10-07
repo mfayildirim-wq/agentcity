@@ -13,7 +13,7 @@ function saveHistory(h) {
 }
 
 export class ChatBar {
-  constructor(el, { store, onSend, onCancel, onMode, onArenaMode, onDeselect }) {
+  constructor(el, { store, onSend, onCancel, onMode, onArenaMode, onDeselect, shell = null }) {
     this.el = el;
     this.store = store;
     this.onSend = onSend;
@@ -27,6 +27,8 @@ export class ChatBar {
     this.draft = '';
     this.openThoughts = new Set();
     this.collapsed = false;
+    this.shell = shell; // ShellView (Nutzer-Terminal) oder null
+    this.view = 'chat'; // chat | term
 
     el.innerHTML = `<div class="chat">
       <div class="c-head">
@@ -35,9 +37,13 @@ export class ChatBar {
           <button data-arena="confirm">Bestätigen</button><button data-arena="auto">Auto</button>
         </div>
         <select class="c-mode" title="Modus des Tools"></select>
+        ${shell ? `<div class="seg mini icons c-view" title="Chat ⇄ Terminal">
+          <button data-view="chat" class="on" title="Chat">${svgIcon(ICON.prompt)}</button><button data-view="term" title="Terminal (Shell im Projektordner)">${svgIcon(ICON.terminal)}</button>
+        </div>` : ''}
         <button class="icon-btn sm c-toggle" title="Verlauf ein/aus">${svgIcon(ICON.chevDown)}</button>
       </div>
       <div class="c-log"></div>
+      <div class="c-term"></div>
       <div class="c-input">
         <textarea rows="1" spellcheck="false"></textarea>
         <button class="icon-btn c-send" title="Senden (Enter)">${svgIcon(ICON.send)}</button>
@@ -50,6 +56,11 @@ export class ChatBar {
     this.modeSel = el.querySelector('.c-mode');
     this.nameEl = el.querySelector('.c-name');
     this.avEl = el.querySelector('.av');
+    this.termEl = el.querySelector('.c-term');
+    el.querySelector('.c-view')?.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-view]');
+      if (b) this.setView(b.dataset.view);
+    });
 
     this.input.addEventListener('keydown', (e) => this.onKey(e));
     this.input.addEventListener('input', () => this.autosize());
@@ -62,7 +73,7 @@ export class ChatBar {
     el.querySelector('.c-toggle').addEventListener('click', () => {
       this.collapsed = !this.collapsed;
       this.chat.classList.toggle('collapsed', this.collapsed);
-      if (!this.collapsed) this.scrollDown(true);
+      if (!this.collapsed) { this.scrollDown(true); if (this.view === 'term') this.shell?.focusSoon(); }
     });
     this.log.addEventListener('toggle', (e) => {
       const d = e.target.closest?.('[data-thought]');
@@ -72,6 +83,22 @@ export class ChatBar {
   }
 
   get agent() { return this.agentId ? this.store.state.agents.get(this.agentId) : null; }
+
+  // Umschalter Chat ⇄ Terminal
+  setView(view) {
+    if (!this.shell) return;
+    this.view = view === 'term' ? 'term' : 'chat';
+    this.chat.classList.toggle('term-mode', this.view === 'term');
+    for (const b of this.el.querySelectorAll('[data-view]')) b.classList.toggle('on', b.dataset.view === this.view);
+    if (this.collapsed) { this.collapsed = false; this.chat.classList.remove('collapsed'); }
+    if (this.view === 'term') {
+      if (this.shell.el.parentNode !== this.termEl) this.termEl.appendChild(this.shell.el);
+      if (this.agentId) this.shell.show(this.agentId);
+    } else {
+      this.input.focus({ preventScroll: true });
+      this.scrollDown(true);
+    }
+  }
   get busy() { return isBusy(this.agent); }
 
   autosize() {
@@ -138,6 +165,7 @@ export class ChatBar {
     if (!show) { this.agentId = null; return; }
     const switched = this.agentId !== a.id;
     this.agentId = a.id;
+    if (switched && this.view === 'term') this.shell?.show(a.id);
     if (switched || changes.has('agents')) this.renderHead(a);
     if (switched || changes.has('chats') || changes.has('agents')) {
       // vor dem Neuzeichnen messen: nur mitscrollen, wenn der Nutzer unten war
@@ -146,7 +174,7 @@ export class ChatBar {
       if (switched || atBottom || this.stick) this.log.scrollTop = this.log.scrollHeight;
       this.stick = false;
     }
-    if (switched && !document.activeElement?.closest?.('input, textarea, select')) this.input.focus({ preventScroll: true });
+    if (switched && this.view === 'chat' && !document.activeElement?.closest?.('input, textarea, select')) this.input.focus({ preventScroll: true });
   }
 
   renderHead(a) {

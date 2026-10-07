@@ -12,6 +12,7 @@ import { ChatBar } from './ui/chat.js';
 import { PermissionStack } from './ui/permission.js';
 import { NewSessionDialog } from './ui/newsession.js';
 import { SettingsPanel } from './ui/settings.js';
+import { ShellView, OutputView } from './ui/terminal.js';
 import { setTools } from './config.js';
 
 const params = new URLSearchParams(location.search);
@@ -29,10 +30,23 @@ const select = (id) => store.select(id);
 const hover = (id) => { for (const [k, av] of world.avatars) av.hovered = k === id; };
 
 const world = new World($('stage'), $('labels'), { onSelect: select, onHover: () => {} });
-const list = new AgentList($('list'), { onSelect: select, onHover: hover });
+const list = new AgentList($('list'), {
+  onSelect: select, onHover: hover,
+  onAdopt: (id) => { const a = store.state.agents.get(id); return a && sessionAction('adopt', a); },
+});
+// Terminals: Nutzer-Shell (Chat-Leiste) und schreibgeschützte Agenten-Ausgabe (Detailkarte)
+const shell = new ShellView({
+  store, toast,
+  request: (type, payload) => conn.request(type, payload),
+  send: (type, payload) => conn.send(type, payload),
+});
+const output = new OutputView({ store });
 const detail = new DetailCard($('detail'), {
   onSelect: select,
   getDiffs: (id) => store.state.diffs[id],
+  getTerminals: (id) => store.terminalsOf(id),
+  onTerminals: (id) => loadTerminals(id),
+  output,
   onAction: (kind, a) => sessionAction(kind, a),
 });
 renderLegend($('legend'));
@@ -51,6 +65,7 @@ const chat = new ChatBar($('chat'), {
   onMode: (agentId, modeId) => request('session.setMode', { agentId, modeId }).catch(() => {}),
   onArenaMode: (agentId, arenaMode) => request('session.setArenaMode', { agentId, arenaMode }).catch(() => {}),
   onDeselect: () => select(null),
+  shell,
 });
 const perms = new PermissionStack($('perms'), {
   onAnswer: (permissionId, optionId) => request('permission.answer', { permissionId, optionId }),
@@ -76,10 +91,27 @@ function loadChatHistory(id) {
     .catch(() => historyLoaded.delete(id));
 }
 
-// Detailkarte: Session beenden / neu starten
+// Agenten-Terminals (Liste + Puffer) vom Server holen – einmal je Agent und Verbindung
+const termsLoaded = new Set();
+function loadTerminals(id) {
+  const a = id && store.state.agents.get(id);
+  if (!a || a.source !== 'acp' || termsLoaded.has(id) || store.state.connection !== 'live') return;
+  termsLoaded.add(id);
+  quiet('pty.list', { agentId: id })
+    .then((res) => { store.applyTerminalList(id, res.terminals); output.reload(); })
+    .catch(() => termsLoaded.delete(id));
+}
+
+// Detailkarte: Session beenden / neu starten / Terminal / übernehmen
 async function sessionAction(kind, a) {
+  if (kind === 'terminal') { chat.setView('term'); return; }
   try {
     if (kind === 'close') await request('session.close', { agentId: a.id });
+    // externe Session übernehmen (session/load); Hinweis-Toast kommt vom Server
+    if (kind === 'adopt') {
+      const res = await request('session.adopt', { agentId: a.id }, 90_000);
+      select(res.agentId);
+    }
     if (kind === 'restart' && a.launch) {
       await request('session.close', { agentId: a.id }).catch(() => {});
       const res = await request('session.create', a.launch, 90_000);
@@ -105,7 +137,7 @@ store.subscribe((s, changes) => {
     emptyEl.classList.toggle('hidden', agents.length > 0);
   }
   if (changes.has('selected')) { world.select(s.selected); loadChatHistory(s.selected); }
-  if (changes.has('agents') || changes.has('selected') || changes.has('diffs') || changes.has('tools')) {
+  if (changes.has('agents') || changes.has('selected') || changes.has('diffs') || changes.has('tools') || changes.has('terminals')) {
     list.render(agents, s.selected);
     detail.render(agents, s.selected, store.now);
     if (changes.has('selected')) list.scrollTo(s.selected);
@@ -130,6 +162,12 @@ const conn = createConnection({
     liveState = st;
     if (st === 'live') {
       hideBanner();
+      // nach Wiederverbindung Terminal-Puffer neu holen (Ausgabe während der Trennung)
+      if (wasLive) {
+        termsLoaded.clear();
+        shell.resync();
+        if (store.state.selected && detail.tab === 'terms') setTimeout(() => loadTerminals(store.state.selected), 50);
+      }
       wasLive = true;
     } else if (wasLive || info?.code === 4401) {
       showBanner(info?.code === 4401 ? 'Zugang abgelehnt – melde neu an …' : 'Verbindung getrennt – verbinde neu …');
