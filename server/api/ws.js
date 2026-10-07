@@ -49,7 +49,7 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
 
   const snapshot = () => ({
     type: 'snapshot',
-    ...ctx.state.snapshot({ tools: ctx.registry?.list?.() ?? [] }),
+    ...ctx.state.snapshot({ tools: ctx.registry?.publicList?.() ?? ctx.registry?.list?.() ?? [] }),
     ...(ctx.permissionsSnapshot ? { permissions: ctx.permissionsSnapshot() } : {}),
   });
 

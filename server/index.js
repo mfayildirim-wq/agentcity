@@ -10,14 +10,20 @@ import { startWatchers } from './watchers/index.js';
 import { createHttpServer } from './api/http.js';
 import { attachWs } from './api/ws.js';
 import { createHandlers } from './api/handlers/index.js';
+import sessionHandlers from './api/handlers/session.js';
+import permissionHandlers from './api/handlers/permission.js';
+import fsHandlers from './api/handlers/fs.js';
+import { createRegistry } from './agents/registry.js';
+import { createSessionManager } from './acp/manager.js';
 
 const config = loadConfig();
 const db = openDb(config.dbPath);
 const repo = createRepo(db);
-// Platzhalter bis Paket 3 (Task 3.1): noch keine steuerbaren Tools
-const registry = { list: () => [], get: () => null };
+// Vorstufe der Registry (Paket 3 ergänzt Nutzer-Tools): Claude Code über den ACP-Adapter
+const registry = createRegistry({ arenaDir: config.arenaDir });
 const bus = createBus();
 const state = createState({ bus });
+const acp = createSessionManager({ state, bus, repo, registry });
 const recorder = createRecorder({ bus, repo, state });
 const watchers = startWatchers({ state, bus, config, autoStart: false });
 
@@ -25,8 +31,8 @@ const server = createHttpServer({ config });
 const ws = attachWs({
   server,
   token: config.token,
-  ctx: { state, bus, repo, registry, acp: null, pty: null, config },
-  handlers: createHandlers(),
+  ctx: { state, bus, repo, registry, acp, pty: null, config },
+  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers),
 });
 
 server.on('error', (err) => {
@@ -48,13 +54,14 @@ server.listen(config.port, config.host, () => {
   console.log(`  Daten:  ${config.dataDir}\n`);
 });
 
-// Sauber beenden: Watcher stoppen, Puffer schreiben, Verbindungen und DB schließen
+// Sauber beenden: Agenten-Prozesse und Watcher stoppen, Puffer schreiben, Verbindungen und DB schließen
 let stopping = false;
-function shutdown(signal) {
+async function shutdown(signal) {
   if (stopping) return;
   stopping = true;
   console.log(`\n  ${signal} – Agent Arena wird beendet …`);
   watchers.stop();
+  await Promise.race([acp.stopAll(), new Promise((r) => setTimeout(r, 2500))]);
   recorder.stop();
   ws.close();
   server.close();
