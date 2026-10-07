@@ -6,6 +6,7 @@
   <title>Agent Arena</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2 29 16 16 30 3 16Z' fill='%23d97757'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="/css/app.css" />
+  <link rel="stylesheet" href="/css/panels.css" />
   <script type="importmap">
     {
       "imports": {
@@ -27,6 +28,12 @@
     </div>
     <div class="stats" id="stats"></div>
     <div class="tools">
+      <button class="icon-btn" id="btn-new" title="Neue Session (N)">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+      </button>
+      <button class="icon-btn" id="btn-legend" title="Legende">
+        <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 8h.01M11 12h1v5h1" /></svg>
+      </button>
       <button class="icon-btn" id="btn-demo" title="Demo-Modus">
         <svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z" /></svg>
       </button>
@@ -48,12 +55,19 @@
 
   <section class="detail hidden" id="detail"></section>
 
-  <div class="legend" id="legend"></div>
+  <div class="legend hidden" id="legend"></div>
+
+  <div class="chat-wrap hidden" id="chat"></div>
+  <div class="perms" id="perms"></div>
+  <div class="ns-wrap hidden" id="newsession"></div>
 
   <div class="empty hidden" id="empty">
     <div class="empty-mark"><svg viewBox="0 0 32 32"><path d="M16 2 29 16 16 30 3 16Z" /></svg></div>
-    <div class="empty-title">Keine aktiven Claude-Code-Sessions</div>
-    <button class="btn" id="btn-empty-demo">Demo ansehen</button>
+    <div class="empty-title">Keine aktiven Sessions</div>
+    <div class="empty-act">
+      <button class="btn primary" id="btn-empty-new">Neue Session</button>
+      <button class="btn ghost" id="btn-empty-demo">Demo ansehen</button>
+    </div>
   </div>
 
   <script type="module" src="/js/main.js"></script>

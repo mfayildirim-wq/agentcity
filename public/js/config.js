@@ -21,6 +21,16 @@ export const STATUS = {
 
 export const CLAUDE_ORANGE = '#d97757';
 
+// ACP-Werkzeugart → Station (wie server/core/model.js)
+export const KIND_TO_CATEGORY = {
+  execute: 'terminal', edit: 'workbench', delete: 'workbench', move: 'workbench',
+  read: 'library', search: 'library', think: 'meeting', fetch: 'portal', switch_mode: 'lounge', other: 'workbench',
+};
+export const kindToCategory = (kind) => KIND_TO_CATEGORY[kind] ?? 'workbench';
+
+// Agent arbeitet gerade (Abbrechen möglich)
+export const isBusy = (a) => a && (a.status === 'thinking' || a.status === 'tool' || a.status === 'waiting_permission');
+
 // Farbpalette für Subagenten-Typen (gedeckt, gut unterscheidbar)
 const SUB_COLORS = ['#5b8def', '#3fb6a8', '#c76fd8', '#e0a03a', '#6fbf5a', '#e36f8e', '#7f7ee8', '#4fb0d9', '#d2875a', '#9aa83a'];
 const SKIN = ['#f2d3bd', '#e8bf9f', '#d6a07c', '#b77b55', '#8d5a3b', '#f5ddc9'];
@@ -39,7 +49,7 @@ export function hairTone(key) { return HAIR[hash(key + 'h') % HAIR.length]; }
 export function agentColor(a) { return a.kind === 'main' ? CLAUDE_ORANGE : subColor(a.agentType); }
 
 export function agentName(a) {
-  if (a.kind === 'main') return a.title || 'Claude';
+  if (a.kind === 'main') return a.title || (a.source === 'acp' ? a.agentName || 'Agent' : 'Claude');
   return a.description || a.agentType || 'Subagent';
 }
 

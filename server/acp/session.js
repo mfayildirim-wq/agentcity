@@ -37,7 +37,7 @@ export function isSubagentCall(u) {
 
 const compact = (e) => ({
   id: e.id, t: e.t, kind: e.kind, label: e.label ?? null, tool: e.tool ?? null, category: e.category ?? null,
-  status: e.status ?? null, path: e.path ?? null,
+  status: e.status ?? null, path: e.path ?? null, toolCallId: e.toolCallId ?? null,
 });
 
 export function createAcpSession({
@@ -104,6 +104,7 @@ export function createAcpSession({
     if (!segment || segment.role !== role || segment.owner !== owner) {
       closeSegment();
       segment = { id: randomUUID(), role, text: '', owner, t: Date.now() };
+      if (role === 'agent' && owner === id && turnText && !loading) turnText = turnText.trimEnd() + '\n\n';
     }
     segment.text += text;
     bus.emit('chat.chunk', { agentId: owner, messageId: segment.id, role: role === 'thought' ? 'thought' : role, text });
@@ -181,6 +182,7 @@ export function createAcpSession({
       case 'plan_removed': return setPlan([]);
       case 'usage_update': {
         const model = u._meta?.['_claude/model'];
+        if (get().context?.used === u.used && (!model || model === get().model)) return;
         patch({ context: { used: u.used, size: u.size, cost: u.cost ?? null }, ...(model ? { model } : {}) });
         if (!loading) emitEvent('usage', { used: u.used, size: u.size, cost: u.cost ?? null, label: `${u.used} / ${u.size}` });
         return;
@@ -237,7 +239,11 @@ export function createAcpSession({
       open.title = u.title ?? open.title;
       open.kind = u.kind ?? open.kind;
       const a = get(owner);
-      if (a?.status === 'tool') patch({ tool: open.title, category: kindToCategory(open.kind), detail: toolDetail(u.rawInput) ?? a.detail }, owner);
+      const detail = toolDetail(u.rawInput) ?? a?.detail ?? null;
+      // nachgereichter Titel (z. B. „Terminal“ → Befehl) auch im kompakten Ereignis
+      const events = (a?.events ?? []).map((e) => (e.kind === 'tool' && e.toolCallId === u.toolCallId
+        ? { ...e, tool: open.title, category: kindToCategory(open.kind), label: toolDetail(u.rawInput) ?? e.label } : e));
+      if (a) patch({ events, ...(a.status === 'tool' ? { tool: open.title, category: kindToCategory(open.kind), detail } : {}) }, owner);
     }
     for (const c of u.content ?? []) {
       if (c.type === 'diff') emitEvent('diff', { toolCallId: u.toolCallId, path: c.path, oldText: c.oldText ?? null, newText: c.newText, label: c.path }, owner);
@@ -346,7 +352,7 @@ export function createAcpSession({
     bus.emit('chat.message', { agentId: id, message });
     try { repo?.insertMessage?.({ ...message, sessionId: sessionId(), agentId: id }); } catch { /* DB optional */ }
     emitEvent('prompt', { text, label: trunc(text, 90), ...(meetingId ? { meetingId } : {}) });
-    patch({ status: 'thinking', lastPrompt: trunc(text, 200), error: null, tool: null, category: null, detail: null });
+    patch({ status: 'thinking', lastPrompt: trunc(text, 200), lastText: null, error: null, tool: null, category: null, detail: null });
 
     let res;
     try {

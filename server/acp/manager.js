@@ -61,7 +61,7 @@ export function createSessionManager({
       const patch = {
         acpSessionId: client.sessionId, modes: modes.map((m) => ({ id: m.id, name: m.name })),
         mode: res.modes?.currentModeId ?? null, status: 'waiting_user', detail: null,
-        agentName: init.agentInfo?.title ?? init.agentInfo?.name ?? tool.name ?? tool.id,
+        agentName: tool.name ?? init.agentInfo?.title ?? init.agentInfo?.name ?? tool.id,
         loadSession: !!init.agentCapabilities?.loadSession,
       };
       state.upsert({ ...session.get(), ...patch, lastActivity: Date.now() });

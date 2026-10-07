@@ -107,7 +107,7 @@ test('Prompt → waiting_permission, allow → Plan, Diff, waiting_user', async 
   assert.equal(msgs[0].text, 'hi');
   assert.equal(msgs.filter((m) => m.role === 'agent').map((m) => m.text).join(''), 'Hallo fertig.');
   const turn = seen.find((m) => m.type === 'session.turnEnd');
-  assert.equal(turn.text, 'Hallo fertig.');
+  assert.equal(turn.text, 'Hallo\n\nfertig.');
   // DB: Berechtigung aufgelöst, Nachrichten gespeichert
   assert.equal(repo.db.prepare('SELECT option_id FROM permissions WHERE id = ?').get(perm.id).option_id, 'allow');
   assert.equal(repo.db.prepare('SELECT COUNT(*) AS n FROM messages').get().n, 2);

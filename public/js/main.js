@@ -8,6 +8,9 @@ import { DetailCard } from './ui/detail.js';
 import { renderStats } from './ui/stats.js';
 import { renderLegend } from './ui/legend.js';
 import { toast, showBanner, hideBanner } from './ui/toast.js';
+import { ChatBar } from './ui/chat.js';
+import { PermissionStack } from './ui/permission.js';
+import { NewSessionDialog } from './ui/newsession.js';
 
 const params = new URLSearchParams(location.search);
 const store = createStore();
@@ -25,8 +28,49 @@ const hover = (id) => { for (const [k, av] of world.avatars) av.hovered = k === 
 
 const world = new World($('stage'), $('labels'), { onSelect: select, onHover: () => {} });
 const list = new AgentList($('list'), { onSelect: select, onHover: hover });
-const detail = new DetailCard($('detail'), { onSelect: select });
+const detail = new DetailCard($('detail'), {
+  onSelect: select,
+  getDiffs: (id) => store.state.diffs[id],
+  onAction: (kind, a) => sessionAction(kind, a),
+});
 renderLegend($('legend'));
+
+// Live-Anfragen; im Demo-Modus gibt es keine steuerbaren Agenten
+const request = (type, payload, timeoutMs) => conn.request(type, payload, timeoutMs).then((r) => r, (err) => {
+  toast(err.message, 'error', 7000);
+  throw err;
+});
+const quiet = (type, payload, timeoutMs) => conn.request(type, payload, timeoutMs);
+
+const chat = new ChatBar($('chat'), {
+  store,
+  onSend: (agentId, text) => request('session.prompt', { agentId, text }),
+  onCancel: (agentId) => request('session.cancel', { agentId }).catch(() => {}),
+  onMode: (agentId, modeId) => request('session.setMode', { agentId, modeId }).catch(() => {}),
+  onDeselect: () => select(null),
+});
+const perms = new PermissionStack($('perms'), {
+  onAnswer: (permissionId, optionId) => request('permission.answer', { permissionId, optionId }),
+  onSelect: select,
+});
+const newSession = new NewSessionDialog($('newsession'), {
+  store,
+  request: quiet,
+  toast,
+  onCreated: (agentId) => select(agentId),
+});
+
+// Detailkarte: Session beenden / neu starten
+async function sessionAction(kind, a) {
+  try {
+    if (kind === 'close') await request('session.close', { agentId: a.id });
+    if (kind === 'restart' && a.launch) {
+      await request('session.close', { agentId: a.id }).catch(() => {});
+      const res = await request('session.create', a.launch, 90_000);
+      select(res.agentId);
+    }
+  } catch { /* Hinweis kam bereits als Toast */ }
+}
 
 if (params.has('debug')) window.__arena = { world, store };
 
@@ -39,11 +83,13 @@ store.subscribe((s, changes) => {
     emptyEl.classList.toggle('hidden', agents.length > 0);
   }
   if (changes.has('selected')) world.select(s.selected);
-  if (changes.has('agents') || changes.has('selected')) {
+  if (changes.has('agents') || changes.has('selected') || changes.has('diffs')) {
     list.render(agents, s.selected);
     detail.render(agents, s.selected, store.now);
     if (changes.has('selected')) list.scrollTo(s.selected);
   }
+  if (changes.has('agents') || changes.has('selected') || changes.has('chats')) chat.render(s.selected, changes);
+  if (changes.has('permissions') || changes.has('agents')) perms.render(s.permissions, s.agents);
   if (changes.has('connection')) {
     liveEl.dataset.state = s.connection;
     liveEl.title = { live: 'Live verbunden', demo: 'Demo-Modus', off: 'Keine Verbindung' }[s.connection];
@@ -90,6 +136,18 @@ function setDemo(on) {
 
 $('btn-demo').addEventListener('click', () => setDemo(!demo));
 $('btn-empty-demo').addEventListener('click', () => setDemo(true));
+const openNew = () => {
+  if (demo) setDemo(false);
+  if (liveState !== 'live') { toast('Keine Verbindung zum Server', 'warn'); return; }
+  newSession.toggle();
+};
+$('btn-new').addEventListener('click', openNew);
+$('btn-empty-new').addEventListener('click', openNew);
+$('btn-legend').addEventListener('click', (e) => {
+  const el = $('legend');
+  el.classList.toggle('hidden');
+  e.currentTarget.classList.toggle('on', !el.classList.contains('hidden'));
+});
 $('btn-reset').addEventListener('click', () => { select(null); world.resetView(); });
 $('btn-labels').addEventListener('click', (e) => {
   const on = !world.labelsVisible;
@@ -103,8 +161,12 @@ $('btn-panel').addEventListener('click', (e) => {
 });
 window.addEventListener('keydown', (e) => {
   if (e.target.closest?.('input, textarea, [contenteditable]')) return;
-  if (e.key === 'Escape') select(null);
-  if (e.key === 'r' && !e.metaKey && !e.ctrlKey) { select(null); world.resetView(); }
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Escape') {
+    if (newSession.isOpen) newSession.close(); else select(null);
+  }
+  if (e.key === 'r') { select(null); world.resetView(); }
+  if (e.key === 'n' && !newSession.isOpen && !perms.list.length) { e.preventDefault(); openNew(); }
 });
 
 function updateInset() {

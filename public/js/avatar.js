@@ -39,7 +39,7 @@ export class Avatar {
     this.selected = false;
     this.hovered = false;
     this.anim = 'idle';
-    this.blend = { walk: 0, work: 0, think: 0, sit: 0 };
+    this.blend = { walk: 0, work: 0, think: 0, sit: 0, raise: 0, floor: 0 };
     this.materials = [];
     this.build(agent);
     this.buildLabel(agent, onLabelClick);
@@ -178,15 +178,19 @@ export class Avatar {
     // Sprechblase bei neuem Werkzeug bzw. Statuswechsel
     let bubble = '';
     if (a.status === 'tool' && a.tool) bubble = `<b>${esc(a.tool.replace(/^mcp__/, '').replace(/__/g, ' · '))}</b>${a.detail ? ' ' + esc(a.detail) : ''}`;
+    else if (a.status === 'waiting_user' && a.source === 'acp') bubble = a.lastText ? esc(a.lastText) : '<b>Bereit</b>';
     else if (a.status === 'waiting_user') bubble = a.detail ? `<b>Frage</b> ${esc(a.detail)}` : '<b>Wartet</b> auf deine Antwort';
     else if (a.status === 'waiting_permission') bubble = '<b>Erlaubnis</b> wird benötigt';
     else if (a.status === 'error') bubble = '<b>Fehler</b>';
+    else if (a.source === 'acp' && a.lastText && (a.status === 'thinking' || a.lastText !== prev?.lastText)) bubble = esc(a.lastText);
     else if (a.status === 'thinking') bubble = '<span class="dots"><i></i><i></i><i></i></span>';
     else if (a.status === 'done' && prev?.status !== 'done') bubble = '<b>Fertig</b>';
     if (bubble !== this.lastBubble) {
       this.lastBubble = bubble;
       this.bubbleEl.innerHTML = bubble;
-      this.bubbleUntil = performance.now() + (a.status === 'thinking' || a.status === 'waiting_user' || a.status === 'waiting_permission' ? 1e9 : 7000);
+      const sticky = a.status === 'waiting_permission' || a.status === 'error' || (a.status === 'waiting_user' && a.source !== 'acp')
+        || (a.status === 'thinking' && !(a.source === 'acp' && a.lastText));
+      this.bubbleUntil = performance.now() + (sticky ? 1e9 : a.source === 'acp' && a.lastText && bubble === esc(a.lastText) ? 12000 : 7000);
     }
   }
 
@@ -252,6 +256,8 @@ export class Avatar {
     const s = this.data.status;
     let anim = 'idle';
     if (moving) anim = 'walk';
+    else if (s === 'waiting_permission') anim = 'raise';
+    else if (s === 'error') anim = 'floor';
     else if (s === 'tool') anim = this.atStation ? 'work' : 'idle';
     else if (s === 'thinking') anim = 'think';
     else if (s === 'idle' || (s === 'waiting_user' && this.atLounge)) anim = 'sit';
@@ -266,6 +272,16 @@ export class Avatar {
       this.gem.position.y = 2.12 + Math.sin(t * 2 + this.phase) * 0.05;
     }
 
+    // Statusring: orange pulsierend bei Rückfrage, sonst ruhig
+    if (s === 'waiting_permission') {
+      const k = 1 + Math.sin(t * 6) * 0.09;
+      this.ring.scale.set(k, k, 1);
+      this.ringMat.opacity = (0.55 + 0.4 * (0.5 + 0.5 * Math.sin(t * 6))) * this.opacity;
+    } else if (this.ring.scale.x !== 1) {
+      this.ring.scale.set(1, 1, 1);
+      this.ringMat.opacity = 0.85 * this.opacity;
+    }
+
     this.selMat.opacity += (((this.selected ? 0.22 : this.hovered ? 0.12 : 0)) - this.selMat.opacity) * Math.min(1, dt * 10);
 
     const showBubble = performance.now() < this.bubbleUntil && this.lastBubble;
@@ -275,7 +291,7 @@ export class Avatar {
   }
 
   pose(t) {
-    const { walk, work, think, sit } = this.blend;
+    const { walk, work, think, sit, raise, floor } = this.blend;
     const w = Math.sin(t * 9);
     const breathe = Math.sin(t * 1.8) * 0.012;
 
@@ -290,13 +306,21 @@ export class Avatar {
     this.armR.rotation.z = 0.55 * think;
     this.armL.rotation.z = -0.06 * (1 - walk);
     this.armR.rotation.z += 0.06 * (1 - walk - think);
+    // Hand heben (Rückfrage): rechter Arm hoch, leichtes Winken
+    this.armR.rotation.x = this.armR.rotation.x * (1 - raise) + (-2.9 + Math.sin(t * 5) * 0.08) * raise;
+    this.armR.rotation.z += -0.15 * raise;
+    // Fehler: auf dem Boden sitzen, Beine nach vorn
+    this.legL.rotation.x = this.legL.rotation.x * (1 - floor) - 1.35 * floor;
+    this.legR.rotation.x = this.legR.rotation.x * (1 - floor) - 1.35 * floor;
+    this.armL.rotation.x = this.armL.rotation.x * (1 - floor) + 0.35 * floor;
+    this.armR.rotation.x = this.armR.rotation.x * (1 - floor) + 0.35 * floor;
 
     // Körper
     const bob = Math.abs(Math.sin(t * 9)) * 0.045 * walk;
-    this.body.position.y = bob + breathe - sit * 0.3;
+    this.body.position.y = bob + breathe - sit * 0.3 - floor * 0.5;
     this.body.position.z = sit * -0.12;
     this.torso.rotation.x = 0.08 * walk + 0.1 * work;
-    this.head.rotation.x = 0.18 * work - 0.12 * think + Math.sin(t * 0.7) * 0.03;
+    this.head.rotation.x = 0.18 * work - 0.12 * think + 0.2 * floor - 0.15 * raise + Math.sin(t * 0.7) * 0.03;
     this.head.rotation.y = Math.sin(t * 0.45) * 0.25 * (1 - walk - work) + 0.2 * think;
     this.head.rotation.z = 0.12 * think;
   }

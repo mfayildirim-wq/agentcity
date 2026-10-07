@@ -1,6 +1,7 @@
 // Zustand im Browser: Snapshot + Deltas vom Server (oder Demo). Alle UI-Teile lesen daraus.
 const MAX_EVENTS = 40;
 const MAX_CHAT = 400;
+const MAX_DIFFS = 60;
 
 export function createStore() {
   const state = {
@@ -10,6 +11,7 @@ export function createStore() {
     permissions: new Map(),
     tools: [],
     chats: {}, // agentId → [{ id, role, text, t, done }]
+    diffs: {}, // agentId → [Diff-Ereignis mit oldText/newText] (Server-Agenten tragen nur kompakte Ereignisse)
     selected: null,
     connection: 'off', // live | off | demo
     clockOffset: 0, // Serverzeit − Browserzeit
@@ -70,10 +72,20 @@ export function createStore() {
   function applyAgentRemove(agentId) {
     if (!state.agents.delete(agentId)) return;
     if (state.selected === agentId) select(null);
+    delete state.chats[agentId];
+    delete state.diffs[agentId];
     changed('agents');
   }
 
   function applyEvent(event) {
+    if (event.kind === 'diff') {
+      const list = (state.diffs[event.agentId] ??= []);
+      if (!list.some((d) => d.id === event.id)) {
+        list.push(event);
+        if (list.length > MAX_DIFFS) list.splice(0, list.length - MAX_DIFFS);
+        changed('diffs');
+      }
+    }
     const a = state.agents.get(event.agentId);
     if (!a || a.events?.some((e) => e.id === event.id)) return;
     const events = [...(a.events || []), event];
@@ -125,6 +137,7 @@ export function createStore() {
     state.agents = new Map();
     state.permissions = new Map();
     state.chats = {};
+    state.diffs = {};
     select(null);
     changed('agents');
   }
@@ -147,7 +160,7 @@ export function createStore() {
   }
 
   return {
-    state, subscribe, now, agentList, dispatch, clear,
+    state, subscribe, now, agentList, dispatch, clear, chatOf,
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
     applyPermission, applyPermissionResolved, applyTask, applyMeeting, select, setConnection,
   };
