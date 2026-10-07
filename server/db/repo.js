@@ -134,20 +134,29 @@ export function createRepo(db) {
         .run(n.title, n.description, n.status, n.assigneeId, Date.now(), id);
       return tasks.get(id);
     },
+    delete: (id) => q('DELETE FROM tasks WHERE id = ?').run(id).changes > 0,
   };
 
   // ------------------------------------------------------------ Besprechungen
-  function rowToMeeting(r) {
+  // Nachrichten einer Besprechung liegen in meeting_messages (einmal je Beitrag); die an die einzelnen
+  // Agenten gesendeten Prompts (mit Präfix) stehen zusätzlich mit meeting_id in messages (Chatverlauf je Agent)
+  const rowToMeetingMessage = (m) => ({
+    id: m.id, role: m.role, ...(m.agent_id ? { agentId: m.agent_id } : {}), text: m.text, t: m.t,
+    ...(m.target_ids ? { targetIds: parse(m.target_ids, []) } : {}),
+  });
+  function rowToMeeting(r, limit = 200) {
     if (!r) return null;
-    const messages = q('SELECT * FROM messages WHERE meeting_id = ? ORDER BY t').all(r.id)
-      .map((m) => ({ id: m.id, agentId: m.agent_id, role: m.role, text: m.text, t: m.t, meetingId: m.meeting_id }));
+    const messages = q('SELECT * FROM (SELECT * FROM meeting_messages WHERE meeting_id = ? ORDER BY t DESC LIMIT ?) ORDER BY t')
+      .all(r.id, limit).map(rowToMeetingMessage);
     return {
       id: r.id, title: r.title, participantIds: parse(r.participant_ids, []), createdAt: r.created_at,
       closedAt: r.closed_at, messages,
     };
   }
   const meetings = {
-    list: () => q('SELECT * FROM meetings ORDER BY created_at').all().map(rowToMeeting),
+    // open: nur nicht geschlossene
+    list: ({ open = false } = {}) => q(`SELECT * FROM meetings ${open ? 'WHERE closed_at IS NULL' : ''} ORDER BY created_at`).all()
+      .map((r) => rowToMeeting(r)),
     get: (id) => rowToMeeting(q('SELECT * FROM meetings WHERE id = ?').get(id)),
     create({ title = null, participantIds = [] }) {
       const id = randomUUID();
@@ -156,12 +165,16 @@ export function createRepo(db) {
       return meetings.get(id);
     },
     update(id, { title, participantIds, closed } = {}) {
-      const cur = meetings.get(id);
+      const cur = q('SELECT * FROM meetings WHERE id = ?').get(id);
       if (!cur) return null;
       q('UPDATE meetings SET title = ?, participant_ids = ?, closed_at = ? WHERE id = ?')
-        .run(title ?? cur.title, JSON.stringify(participantIds ?? cur.participantIds),
-          closed === undefined ? cur.closedAt ?? null : closed ? Date.now() : null, id);
+        .run(title === undefined ? cur.title : title, participantIds ? JSON.stringify(participantIds) : cur.participant_ids,
+          closed === undefined ? cur.closed_at ?? null : closed ? Date.now() : null, id);
       return meetings.get(id);
+    },
+    addMessage(meetingId, m) {
+      q('INSERT OR REPLACE INTO meeting_messages (id, meeting_id, role, agent_id, text, target_ids, t) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .run(m.id ?? randomUUID(), meetingId, m.role, m.agentId ?? null, m.text, m.targetIds ? JSON.stringify(m.targetIds) : null, m.t ?? Date.now());
     },
   };
 

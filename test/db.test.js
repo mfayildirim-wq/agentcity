@@ -16,7 +16,7 @@ test('Schema ist idempotent', () => {
   const { db } = setup();
   openDb(db); // zweite Migration auf derselben Verbindung
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((r) => r.name);
-  for (const t of ['projects', 'sessions', 'agents', 'events', 'messages', 'permissions', 'tasks', 'meetings', 'meta']) {
+  for (const t of ['projects', 'sessions', 'agents', 'events', 'messages', 'permissions', 'tasks', 'meetings', 'meeting_messages', 'meta']) {
     assert.ok(tables.includes(t), t);
   }
 });
@@ -68,8 +68,20 @@ test('Tasks und Meetings', () => {
   const m2 = repo.meetings.update(m.id, { participantIds: ['a1'], closed: true });
   assert.deepEqual(m2.participantIds, ['a1']);
   assert.ok(m2.closedAt);
+  // Prompts an die einzelnen Agenten (messages) zählen nicht als Besprechungsbeiträge
   repo.insertMessage({ id: 'x', sessionId: 's1', agentId: 'a1', meetingId: m.id, role: 'user', text: 'hi', t: 1 });
-  assert.equal(repo.meetings.list()[0].messages.length, 1);
+  assert.equal(repo.meetings.list()[0].messages.length, 0);
+  repo.meetings.addMessage(m.id, { id: 'y', role: 'user', text: 'hallo', targetIds: ['a1'], t: 2 });
+  repo.meetings.addMessage(m.id, { id: 'z', role: 'agent', agentId: 'a1', text: 'antwort', t: 3 });
+  assert.deepEqual(repo.meetings.get(m.id).messages, [
+    { id: 'y', role: 'user', text: 'hallo', t: 2, targetIds: ['a1'] },
+    { id: 'z', role: 'agent', agentId: 'a1', text: 'antwort', t: 3 },
+  ]);
+  assert.equal(repo.meetings.list({ open: true }).length, 0);
+  assert.equal(repo.meetings.update(m.id, { closed: false }).closedAt, null);
+  assert.equal(repo.meetings.list({ open: true }).length, 1);
+  assert.equal(repo.tasks.delete(t.id), true);
+  assert.equal(repo.tasks.list().length, 0);
 });
 
 test('Recorder schreibt Ereignisse gebündelt und Agenten sofort', async () => {

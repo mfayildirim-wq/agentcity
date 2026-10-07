@@ -12,3 +12,6 @@ CREATE TABLE IF NOT EXISTS tasks (id TEXT PRIMARY KEY, title TEXT, description T
   meeting_id TEXT, source_message_id TEXT, created_at INTEGER, updated_at INTEGER);
 CREATE TABLE IF NOT EXISTS meetings (id TEXT PRIMARY KEY, title TEXT, participant_ids TEXT, created_at INTEGER, closed_at INTEGER);
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS meeting_messages (id TEXT PRIMARY KEY, meeting_id TEXT, role TEXT, agent_id TEXT, text TEXT,
+  target_ids TEXT, t INTEGER);
+CREATE INDEX IF NOT EXISTS meeting_messages_meeting_t ON meeting_messages(meeting_id, t);

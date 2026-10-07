@@ -16,6 +16,10 @@ import fsHandlers from './api/handlers/fs.js';
 import settingsHandlers from './api/handlers/settings.js';
 import chatHandlers from './api/handlers/chat.js';
 import ptyHandlers from './api/handlers/pty.js';
+import meetingHandlers from './api/handlers/meeting.js';
+import taskHandlers from './api/handlers/task.js';
+import { createMeetings } from './core/meetings.js';
+import { createTasks } from './core/tasks.js';
 import { createPtyManager } from './pty/manager.js';
 import { createRegistry } from './agents/registry.js';
 import { createSessionManager } from './acp/manager.js';
@@ -31,14 +35,20 @@ const state = createState({ bus });
 const pty = createPtyManager({ bus });
 const acp = createSessionManager({ state, bus, repo, registry, pty });
 const recorder = createRecorder({ bus, repo, state });
+// Besprechungen und Aufgaben (offene aus der DB laden, im Snapshot enthalten)
+const meetings = createMeetings({ state, bus, repo, acp, registry });
+const tasks = createTasks({ state, bus, repo, acp });
+meetings.load();
+tasks.load();
 const watchers = startWatchers({ state, bus, config, autoStart: false });
 
 const server = createHttpServer({ config });
 const ws = attachWs({
   server,
   token: config.token,
-  ctx: { state, bus, repo, registry, acp, pty, config },
-  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers, ptyHandlers),
+  ctx: { state, bus, repo, registry, acp, pty, config, meetings, tasks },
+  handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers, ptyHandlers,
+    meetingHandlers, taskHandlers),
 });
 
 server.on('error', (err) => {
