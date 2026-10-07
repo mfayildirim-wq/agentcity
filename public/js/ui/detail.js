@@ -9,6 +9,10 @@ const TABS = [
   ['diffs', ICON.diff, 'Änderungen'],
   ['subs', ICON.sub, 'Subagenten'],
 ];
+// Zeitangabe, die der Sekunden-Takt aktualisiert, ohne die Karte neu zu bauen
+const ago = (ms, now) => `<span data-ago="${Number(ms) || 0}">${fmtAgo(ms, now)}</span>`;
+const AGO_RE = /(<span data-ago="\d+">)[^<]*/g;
+
 const PLAN_ICON = { completed: ICON.check, in_progress: ICON.half, pending: ICON.circle };
 
 export class DetailCard {
@@ -40,7 +44,7 @@ export class DetailCard {
       if (act) this.action(act.dataset.action);
     });
     // Zeitangaben laufend aktualisieren (nicht während Text markiert wird)
-    setInterval(() => { if (this.selected && !String(window.getSelection?.() ?? '')) this.draw(); }, 1000);
+    setInterval(() => this.tickTimes(), 1000);
   }
 
   action(kind) {
@@ -67,7 +71,7 @@ export class DetailCard {
 
   draw() {
     const a = this.agents.find((x) => x.id === this.selected);
-    if (!a) { this.el.classList.add('hidden'); return; }
+    if (!a) { this.el.classList.add('hidden'); this.sig = null; return; }
     const now = this.now();
     const st = STATUS[a.status] || STATUS.idle;
     const parent = a.parentId && this.agents.find((x) => x.id === a.parentId);
@@ -84,7 +88,7 @@ export class DetailCard {
     if (!tabs.some(([k]) => k === this.tab)) this.tab = 'activity';
 
     this.el.classList.remove('hidden');
-    this.el.innerHTML = `
+    const html = `
       <div class="d-head">
         <span class="av lg" style="--c:${agentColor(a)}">${a.kind === 'main' ? DIAMOND : ''}</span>
         <div class="d-title">
@@ -94,7 +98,7 @@ export class DetailCard {
         ${acp ? `<button class="icon-btn sm ${this.confirmClose === a.id ? 'danger' : ''}" data-action="end" title="${this.confirmClose === a.id ? 'Nochmal klicken: Session beenden' : 'Session beenden'}">${svgIcon(ICON.power)}</button>` : ''}
         <button class="icon-btn sm" data-close title="Schließen">${svgIcon(ICON.close)}</button>
       </div>
-      <div class="d-status" style="--c:${statusColor}"><i></i>${st.label}<span>seit ${fmtAgo(a.lastActivity, now)}</span></div>
+      <div class="d-status" style="--c:${statusColor}"><i></i>${st.label}<span>seit ${ago(a.lastActivity, now)}</span></div>
       ${current}
       ${a.status === 'error' && a.error ? this.errorBox(a) : ''}
       <div class="kv">
@@ -102,7 +106,7 @@ export class DetailCard {
         <div><span>Werkzeuge</span><b>${a.toolCount}</b></div>
         <div><span>Tokens ein</span><b>${fmtTokens(tokens.input + tokens.cache)}</b></div>
         <div><span>Tokens aus</span><b>${fmtTokens(tokens.output)}</b></div>
-        <div><span>Laufzeit</span><b>${a.startedAt ? fmtAgo(a.startedAt, now) : '–'}</b></div>
+        <div><span>Laufzeit</span><b>${a.startedAt ? ago(a.startedAt, now) : '–'}</b></div>
         <div><span>${parent ? 'Erzeuger' : 'Subagenten'}</span><b>${parent ? `<a data-jump="${esc(parent.id)}">${esc(agentName(parent)).slice(0, 18)}</a>` : children.length}</b></div>
       </div>
       ${a.lastPrompt && a.kind === 'main' && !acp ? `<div class="quote"><span>Letzte Anweisung</span>${esc(a.lastPrompt)}</div>` : ''}
@@ -110,6 +114,20 @@ export class DetailCard {
       <div class="d-tabs">${tabs.map(([k, ic, label]) => `<button class="d-tab ${k === this.tab ? 'on' : ''}" data-tab="${k}" title="${label}">${svgIcon(ic)}${counts[k] ? `<b>${counts[k]}</b>` : ''}</button>`).join('')}</div>
       <div class="d-pane">${this.pane(a, children, diffs, now)}</div>
     `;
+    // nur neu bauen, wenn sich mehr als Zeitangaben geändert haben (Knöpfe, Fokus und Auswahl bleiben erhalten)
+    const sig = html.replace(AGO_RE, '$1');
+    if (sig === this.sig && this.el.firstElementChild) { this.tickTimes(); return; }
+    this.sig = sig;
+    this.el.innerHTML = html;
+  }
+
+  tickTimes() {
+    if (!this.selected || this.el.classList.contains('hidden')) return;
+    const now = this.now();
+    for (const el of this.el.querySelectorAll('[data-ago]')) {
+      const t = fmtAgo(Number(el.dataset.ago), now);
+      if (el.textContent !== t) el.textContent = t;
+    }
   }
 
   errorBox(a) {
@@ -144,7 +162,7 @@ export class DetailCard {
         const open = this.openDiffs.has(d.id);
         const name = String(d.path ?? '').split('/').pop();
         const body = open ? ('newText' in d ? diffHtml(d.oldText, d.newText, 40) : '<div class="d-none">Inhalt nur live verfügbar</div>') : '';
-        return `<li><button data-diff="${esc(d.id)}" title="${esc(d.path)}">${svgIcon(open ? ICON.chevDown : ICON.diff)}<b>${esc(name)}</b><em>\u200e${esc(d.path)}\u200e</em><time>${fmtAgo(d.t, now)}</time></button>${body}</li>`;
+        return `<li><button data-diff="${esc(d.id)}" title="${esc(d.path)}">${svgIcon(open ? ICON.chevDown : ICON.diff)}<b>${esc(name)}</b><em>\u200e${esc(d.path)}\u200e</em><time>${ago(d.t, now)}</time></button>${body}</li>`;
       }).join('')}</ul>`;
     }
     if (this.tab === 'subs') {
@@ -163,7 +181,7 @@ export class DetailCard {
         : e.kind === 'error' || e.kind === 'tool_update' ? '#e5534b' : '#8a94a6';
       const label = e.kind === 'tool' ? `<b>${esc((e.tool || '').replace(/^mcp__/, ''))}</b> ${esc(e.label && e.label !== e.tool ? e.label : '')}`
         : e.kind === 'tool_update' ? `<b>${esc(e.tool || 'Werkzeug')}</b> fehlgeschlagen` : esc(e.label);
-      return `<li style="--c:${c}">${svgIcon(icon)}<span>${label}</span><time>${e.t ? fmtAgo(e.t, now) : ''}</time></li>`;
+      return `<li style="--c:${c}">${svgIcon(icon)}<span>${label}</span><time>${e.t ? ago(e.t, now) : ''}</time></li>`;
     }).join('');
     return events ? `<ul class="events">${events}</ul>` : '<div class="d-none">Noch keine Aktivität</div>';
   }

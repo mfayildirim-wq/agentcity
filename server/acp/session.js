@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { createAgent, createEvent, createPermission, kindToCategory } from '../core/model.js';
 
 const MAX_AGENT_EVENTS = 20;
+const MAX_DIFF_TEXT = 64 * 1024;
 const TEXT_THROTTLE_MS = 300;
 const SUB_LINGER_MS = 3 * 60_000;
 
@@ -40,8 +41,19 @@ const compact = (e) => ({
   status: e.status ?? null, path: e.path ?? null, toolCallId: e.toolCallId ?? null,
 });
 
+// Diff-Ereignis: Texte auf je 64 KB begrenzt, Zeilenzahlen für die DB (dort ohne Texte)
+export function diffPayload(c) {
+  const cut = (t) => (typeof t === 'string' && t.length > MAX_DIFF_TEXT ? t.slice(0, MAX_DIFF_TEXT) : t ?? null);
+  const lines = (t) => (typeof t === 'string' ? t.split('\n').length : 0);
+  const truncated = (c.oldText?.length ?? 0) > MAX_DIFF_TEXT || (c.newText?.length ?? 0) > MAX_DIFF_TEXT;
+  return {
+    path: c.path, oldText: cut(c.oldText), newText: cut(c.newText) ?? '', oldLines: lines(c.oldText), newLines: lines(c.newText),
+    label: c.path, ...(truncated ? { truncated: true } : {}),
+  };
+}
+
 export function createAcpSession({
-  agent, client, state, bus, repo, autoApprove = false, subLingerMs = SUB_LINGER_MS, textThrottleMs = TEXT_THROTTLE_MS,
+  agent, client, state, bus, repo, ownsSession = () => true, subLingerMs = SUB_LINGER_MS, textThrottleMs = TEXT_THROTTLE_MS,
 }) {
   const id = agent.id;
   let cur = agent;
@@ -60,11 +72,13 @@ export function createAcpSession({
   let textTimer = null;
   let pendingText = null;
 
-  const sessionId = () => get().sessionId;
-  function get(aid = id) { return state.get(aid) ?? (aid === id ? cur : null); }
+  const sessionId = () => get()?.sessionId ?? agent.sessionId;
+  // nach close() nie auf den letzten Stand zurückfallen (sonst entstünde ein Geister-Agent)
+  function get(aid = id) { return state.get(aid) ?? (aid === id && !closing ? cur : null); }
 
   // Agent ändern und veröffentlichen
   function patch(changes, aid = id) {
+    if (closing) return null;
     const base = get(aid);
     if (!base) return null;
     const next = { ...base, ...changes, lastActivity: Date.now() };
@@ -74,7 +88,8 @@ export function createAcpSession({
   }
 
   function emitEvent(kind, payload, aid = id) {
-    const event = createEvent(aid, kind, { sessionId: sessionId(), ...payload });
+    if (closing) return null;
+    const event = createEvent(aid, kind, { sessionId: get()?.sessionId ?? agent.sessionId, ...payload });
     bus.emit('event', { event });
     const a = get(aid);
     if (a) patch({ events: [...(a.events ?? []), compact(event)].slice(-MAX_AGENT_EVENTS) }, aid);
@@ -147,7 +162,10 @@ export function createAcpSession({
     if (!a || a.status === 'done') return;
     for (const [k, t] of openTools) if (t.owner === subId) openTools.delete(k);
     patch({ status: 'done', tool: null, category: null, detail: null, ...(failed ? { error: { message: 'Subagent fehlgeschlagen' } } : {}) }, subId);
-    later(() => state.remove(subId), subLingerMs);
+    later(() => {
+      state.remove(subId);
+      for (const m of [subByTool, subBySession]) for (const [k, v] of m) if (v === subId) m.delete(k);
+    }, subLingerMs);
   }
 
   const ownerOf = (u) => {
@@ -158,7 +176,15 @@ export function createAcpSession({
 
   // ------------------------------------------------------------------ Updates
   function onUpdate(u) {
-    if (closing) return;
+    if (closing || !u || typeof u !== 'object') return;
+    try {
+      handleUpdate(u);
+    } catch (err) {
+      console.warn('[acp] Update nicht verarbeitet:', u.sessionUpdate, err?.message ?? err);
+    }
+  }
+
+  function handleUpdate(u) {
     switch (u.sessionUpdate) {
       case 'user_message_chunk':
         if (loading && u.content?.type === 'text') chunk('user', u.content.text);
@@ -201,6 +227,8 @@ export function createAcpSession({
 
   function onToolCall(u) {
     if (loading) return;
+    // derselbe Aufruf erneut gemeldet → wie ein Update behandeln
+    if (openTools.has(u.toolCallId) || subByTool.has(u.toolCallId)) { onToolUpdate(u); return; }
     closeSegment();
     const parentSub = ownerOf(u);
     const kind = u.kind ?? 'other';
@@ -245,11 +273,12 @@ export function createAcpSession({
         ? { ...e, tool: open.title, category: kindToCategory(open.kind), label: toolDetail(u.rawInput) ?? e.label } : e));
       if (a) patch({ events, ...(a.status === 'tool' ? { tool: open.title, category: kindToCategory(open.kind), detail } : {}) }, owner);
     }
-    for (const c of u.content ?? []) {
-      if (c.type === 'diff') emitEvent('diff', { toolCallId: u.toolCallId, path: c.path, oldText: c.oldText ?? null, newText: c.newText, label: c.path }, owner);
+    const content = Array.isArray(u.content) ? u.content : [];
+    for (const c of content) {
+      if (c?.type === 'diff') emitEvent('diff', { toolCallId: u.toolCallId, ...diffPayload(c) }, owner);
     }
     const finished = u.status === 'completed' || u.status === 'failed';
-    if (finished || u.content?.length) {
+    if (finished || content.length) {
       emitEvent('tool_update', { toolCallId: u.toolCallId, status: u.status ?? null, tool: open?.title ?? u.title ?? null, label: u.status ?? '' }, owner);
     }
     if (!finished) return;
@@ -281,7 +310,8 @@ export function createAcpSession({
   }
 
   function setPlan(entries) {
-    const plan = entries.map((e) => ({ content: e.content, status: e.status, priority: e.priority }));
+    if (!Array.isArray(entries)) return;
+    const plan = entries.filter((e) => e && typeof e === 'object').map((e) => ({ content: e.content, status: e.status, priority: e.priority }));
     patch({ plan });
     if (!loading) emitEvent('plan', { entries: plan, label: `${plan.filter((e) => e.status === 'completed').length}/${plan.length}` });
   }
@@ -300,7 +330,8 @@ export function createAcpSession({
     perm.toolId = get().toolId;
     try { repo?.insertPermission?.(perm, sessionId()); } catch (err) { console.error('[acp] Berechtigung', err.message); }
 
-    const auto = autoApprove || get().mode === 'auto' || alwaysAllow.has(key);
+    // Auto-Freigabe nur aus dem Arena-Modus, nie aus dem Modus des Tools
+    const auto = get().arenaMode === 'auto' || alwaysAllow.has(key);
     const allow = auto && firstAllow(req.options ?? []);
     if (allow) {
       resolve({ outcome: 'selected', optionId: allow.optionId });
@@ -331,7 +362,7 @@ export function createAcpSession({
     bus.emit('permission.resolved', { permissionId, optionId });
     emitEvent('permission', { permissionId, optionId, title: p.perm.title, label: `${p.perm.title} → ${option?.name ?? 'abgebrochen'}` });
     if (p.perm.subAgentId && get(p.perm.subAgentId)?.status === 'waiting_permission') patch({ status: 'tool' }, p.perm.subAgentId);
-    if (!pending.size && get().status === 'waiting_permission') {
+    if (!pending.size && get()?.status === 'waiting_permission') {
       patch(busy ? { status: openOf(id) || subsRunning() ? 'tool' : 'thinking' } : { status: 'waiting_user' });
     }
     return { ok: true };
@@ -362,7 +393,9 @@ export function createAcpSession({
       closeSegment();
       cancelPending();
       // endet gerade der Prozess, kümmert sich onExit um den Fehlerzustand
-      await Promise.race([client.closed, new Promise((r) => setTimeout(r, 300))]);
+      let wait;
+      await Promise.race([client.closed, new Promise((r) => { wait = setTimeout(r, 300); wait.unref?.(); })]);
+      clearTimeout(wait);
       if (!client.running || closing) return { stopReason: 'error' };
       const msg = err?.message || String(err);
       patch({ status: 'error', error: { message: msg, stderrTail: client.stderrTail?.(20) ?? '' } });
@@ -371,6 +404,7 @@ export function createAcpSession({
       return { stopReason: 'error', error: msg };
     }
     busy = false;
+    if (closing || !get()) return { stopReason: res?.stopReason ?? 'cancelled' };
     closeSegment();
     for (const [k, t] of openTools) if (t.owner === id) openTools.delete(k);
     const u = res?.usage;
@@ -400,6 +434,18 @@ export function createAcpSession({
     if (busy) await client.cancel();
   }
 
+  function setArenaMode(arenaMode) {
+    if (arenaMode !== 'confirm' && arenaMode !== 'auto') throw new Error(`Unbekannter Arena-Modus: ${arenaMode}`);
+    patch({ arenaMode });
+    // offene Rückfragen sofort freigeben, wenn auf Auto umgestellt wird
+    if (arenaMode === 'auto') {
+      for (const [pid, p] of [...pending]) {
+        const allow = firstAllow(p.perm.options);
+        if (allow) answer(pid, allow.optionId);
+      }
+    }
+  }
+
   async function setMode(modeId) {
     await client.setMode(modeId);
     patch({ mode: modeId });
@@ -424,7 +470,7 @@ export function createAcpSession({
     const message = info.error ?? `Agent-Prozess beendet (Code ${info.code ?? info.signal ?? '?'})`;
     patch({ status: 'error', tool: null, category: null, detail: null, error: { message, code: info.code ?? null, signal: info.signal ?? null, stderrTail: info.stderrTail ?? '' } });
     emitEvent('error', { message, code: info.code ?? null, label: trunc(message, 90) });
-    try { repo?.endSession?.(sessionId(), 'error'); } catch { /* DB optional */ }
+    try { if (ownsSession()) repo?.endSession?.(sessionId(), 'error'); } catch { /* DB optional */ }
   }
 
   async function close() {
@@ -440,7 +486,7 @@ export function createAcpSession({
   client.on('exit', onExit);
 
   return {
-    id, get, prompt, cancel, answer, setMode, load, close,
+    id, get, prompt, cancel, answer, setMode, setArenaMode, load, close,
     get busy() { return busy; },
     hasPermission: (pid) => pending.has(pid),
     pendingPermissions: () => [...pending.values()].map((p) => p.perm),

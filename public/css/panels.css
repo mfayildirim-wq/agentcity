@@ -242,3 +242,6 @@ body.has-chat .detail { max-height: calc(100vh - 80px); }
   .chat-wrap { right: 12px !important; bottom: calc(34vh + 24px); }
   .perms { right: 12px; width: auto; left: 12px; bottom: calc(34vh + 24px); }
 }
+
+.seg.mini button { padding: 2px 7px; font-size: 10.5px; }
+.c-arena button.on[data-arena='auto'] { background: rgba(240, 163, 58, 0.2); color: #f6c27a; }

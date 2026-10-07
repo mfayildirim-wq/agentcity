@@ -112,6 +112,7 @@ export function createStore() {
     const i = chat.findIndex((m) => m.id === message.id && m.role === message.role);
     const entry = { ...message, done: true };
     if (i >= 0) chat[i] = entry; else chat.push(entry);
+    if (chat.length > MAX_CHAT) chat.splice(0, chat.length - MAX_CHAT);
     changed('chats');
   }
 

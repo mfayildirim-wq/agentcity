@@ -39,7 +39,13 @@ export function createRecorder({ bus, repo, state, flushMs = 500, debounceMs = 1
   }
 
   function onEvent({ event }) {
-    buffer.push({ ...event, sessionId: event.sessionId ?? sessionOf(event.agentId) });
+    let e = event;
+    // Diff-Texte nicht in die DB: nur Pfad und Zeilenzahlen
+    if (e.kind === 'diff') {
+      const { oldText, newText, ...rest } = e;
+      e = rest;
+    }
+    buffer.push({ ...e, sessionId: e.sessionId ?? sessionOf(e.agentId) });
   }
 
   function flush() {

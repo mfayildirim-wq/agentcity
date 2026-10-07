@@ -5,6 +5,8 @@
 //   „lies <pfad>“ / „schreib <pfad>“ → fs/read_text_file bzw. fs/write_text_file beim Client
 //   „langsam“  → wartet bis zum Abbruch (session/cancel)
 //   „absturz“  → Prozess endet mit Code 3
+//   „stirb“    → stellt eine Berechtigungsanfrage und endet dann mit Code 4
+//   FAKE_HANG_INIT=1 → initialize antwortet nie
 import { Readable, Writable } from 'node:stream';
 import { AgentSideConnection, ndJsonStream } from '@agentclientprotocol/sdk';
 
@@ -19,6 +21,7 @@ class FakeAgent {
   }
 
   async initialize() {
+    if (process.env.FAKE_HANG_INIT === '1') await new Promise(() => {});
     return { protocolVersion: 1, agentCapabilities: { loadSession: true }, agentInfo: { name: 'fake-agent', version: '1.0.0' } };
   }
 
@@ -100,6 +103,7 @@ class FakeAgent {
       sessionUpdate: 'tool_call', toolCallId: 't1', title: 'ls', kind: 'execute', status: 'pending',
       rawInput: { command: 'ls -la' },
     });
+    if (input.includes('stirb')) setTimeout(() => process.exit(4), 80);
     const res = await this.conn.requestPermission({
       sessionId,
       toolCall: { toolCallId: 't1', title: 'ls', kind: 'execute', status: 'pending', rawInput: { command: 'ls -la' } },

@@ -41,7 +41,13 @@ export default {
     return need(ctx).close(str(msg.agentId, 'agentId'));
   },
 
+  // Modus des Tools (ACP session/set_mode)
   async 'session.setMode'(ctx, msg) {
     return need(ctx).setMode(str(msg.agentId, 'agentId'), str(msg.modeId, 'modeId'));
+  },
+
+  // Arena-Modus: 'confirm' = Rückfragen im Browser, 'auto' = automatisch freigeben
+  'session.setArenaMode'(ctx, msg) {
+    return need(ctx).setArenaMode(str(msg.agentId, 'agentId'), str(msg.arenaMode, 'arenaMode'));
   },
 };

@@ -24,6 +24,7 @@ export class AcpClient extends EventEmitter {
     this.stderr = [];
     this.exited = null; // { code, signal, error, stderrTail } nach Prozessende
     this.closed = new Promise((resolve) => { this._onClosed = resolve; });
+    this.openAnswers = new Set(); // offene Berechtigungs-Antworten (bei Prozessende abbrechen)
   }
 
   get running() { return !!this.proc && !this.exited; }
@@ -33,7 +34,8 @@ export class AcpClient extends EventEmitter {
     if (this.proc) return this;
     const env = { ...process.env, ...this.tool.env, ...this.env };
     delete env.CLAUDECODE; // von der Arena gestartete Agenten sind keine verschachtelten Sessions
-    const proc = spawn(this.tool.command, this.tool.args ?? [], { cwd: this.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    // eigene Prozessgruppe, damit stop() auch Kindprozesse des Adapters beendet
+    const proc = spawn(this.tool.command, this.tool.args ?? [], { cwd: this.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
     this.proc = proc;
 
     let partial = '';
@@ -61,6 +63,8 @@ export class AcpClient extends EventEmitter {
   finish(info) {
     if (this.exited) return;
     this.exited = { ...info, stderrTail: this.stderrTail() };
+    for (const answer of [...this.openAnswers]) answer({ outcome: 'cancelled' });
+    this.openAnswers.clear();
     this._onClosed(this.exited);
     this.emit('exit', this.exited);
   }
@@ -75,10 +79,11 @@ export class AcpClient extends EventEmitter {
         const answer = (outcome) => {
           if (done) return;
           done = true;
+          this.openAnswers.delete(answer);
           resolve({ outcome: outcome?.outcome === 'selected' ? { outcome: 'selected', optionId: outcome.optionId } : { outcome: 'cancelled' } });
         };
-        if (!this.listenerCount('permission')) { answer({ outcome: 'cancelled' }); return; }
-        this.closed.then(() => answer({ outcome: 'cancelled' }));
+        if (!this.listenerCount('permission') || this.exited) { answer({ outcome: 'cancelled' }); return; }
+        this.openAnswers.add(answer);
         this.emit('permission', params, answer);
       }),
       readTextFile: (params) => readTextFile(this.cwd, params),
@@ -143,9 +148,14 @@ export class AcpClient extends EventEmitter {
   stop() {
     const proc = this.proc;
     if (!proc || this.exited) return this.closed;
-    try { proc.kill('SIGTERM'); } catch { /* bereits beendet */ }
-    const t = setTimeout(() => { try { proc.kill('SIGKILL'); } catch { /* bereits beendet */ } }, 2000);
+    const kill = (sig) => {
+      try { process.kill(-proc.pid, sig); } catch { try { proc.kill(sig); } catch { /* bereits beendet */ } }
+    };
+    kill('SIGTERM');
+    const t = setTimeout(() => kill('SIGKILL'), 2000);
     t.unref?.();
+    // nach Ende des Adapters verbliebene Kindprozesse der Gruppe beenden
+    this.closed.then(() => { clearTimeout(t); try { process.kill(-proc.pid, 'SIGKILL'); } catch { /* Gruppe leer */ } });
     return this.closed;
   }
 }

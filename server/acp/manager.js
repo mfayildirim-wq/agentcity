@@ -7,7 +7,18 @@ import { createAgent } from '../core/model.js';
 import { AcpClient } from './client.js';
 import { createAcpSession } from './session.js';
 
-export const MODES = ['confirm', 'auto'];
+export const MODES = ['confirm', 'auto']; // Arena-Modus: Rückfragen bestätigen oder automatisch freigeben
+export const START_TIMEOUT_MS = 60_000;
+
+// Promise mit Zeitlimit (für initialize/newSession/loadSession)
+export function withTimeout(p, ms, label) {
+  let t;
+  const timeout = new Promise((_, reject) => {
+    t = setTimeout(() => reject(new Error(`${label}: keine Antwort nach ${Math.round(ms / 1000)} s`)), ms);
+    t.unref?.();
+  });
+  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
+}
 
 function checkDir(cwd) {
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error('Projektordner muss ein absoluter Pfad sein');
@@ -19,6 +30,7 @@ function checkDir(cwd) {
 
 export function createSessionManager({
   state, bus, repo, registry, clientFactory = (opts) => new AcpClient(opts), sessionOptions = {},
+  startTimeoutMs = START_TIMEOUT_MS,
 }) {
   const sessions = new Map(); // agentId → { session, client, launch }
 
@@ -35,7 +47,7 @@ export function createSessionManager({
   }
 
   // Gemeinsamer Start: Agent anlegen, Prozess starten, initialize; danach new/load durch `open`
-  async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open }) {
+  async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false }) {
     const id = `a:${randomUUID()}`;
     const project = path.basename(cwd);
     const projectId = repo?.upsertProject?.({ cwd, name: project }) ?? null;
@@ -46,17 +58,24 @@ export function createSessionManager({
       id, toolId: tool.id, sessionId, acpSessionId, project, cwd, title: title || null, source: 'acp', controllable: true,
       status: 'thinking', mode: null,
     });
+    agent.arenaMode = mode === 'auto' ? 'auto' : 'confirm';
     agent.launch = { toolId: tool.id, cwd, mode, title: title || null };
     agent.detail = 'startet …';
     const client = clientFactory({ tool, cwd });
-    const session = createAcpSession({ agent, client, state, bus, repo, autoApprove: mode === 'auto', ...sessionOptions });
-    sessions.set(id, { session, client, launch: agent.launch });
+    // ownsSession: DB-Session gehört dieser Arena-Session (bei Übernahme erst nach erfolgreichem Laden)
+    const entryData = { client, launch: agent.launch, ownsSession: !adopted };
+    const session = createAcpSession({ agent, client, state, bus, repo, ownsSession: () => entryData.ownsSession, ...sessionOptions });
+    entryData.session = session;
+    sessions.set(id, entryData);
+    const closedDuringStart = () => sessions.get(id) !== entryData;
     state.upsert(agent);
 
     try {
       client.start();
-      const init = await client.initialize();
-      const res = (await open(client, session, init)) ?? {};
+      const init = await withTimeout(client.initialize(), startTimeoutMs, 'initialize');
+      if (closedDuringStart()) throw new Error('beim Start geschlossen');
+      const res = (await withTimeout(Promise.resolve(open(client, session, init)), startTimeoutMs, adopted ? 'session/load' : 'session/new')) ?? {};
+      if (closedDuringStart()) throw new Error('beim Start geschlossen');
       const modes = res.modes?.availableModes ?? [];
       const patch = {
         acpSessionId: client.sessionId, modes: modes.map((m) => ({ id: m.id, name: m.name })),
@@ -66,13 +85,15 @@ export function createSessionManager({
       };
       state.upsert({ ...session.get(), ...patch, lastActivity: Date.now() });
       repo?.setSessionAcpId?.(sessionId, client.sessionId);
-      // gewünschten Modus setzen, wenn das Tool ihn kennt
-      if (mode && modes.some((m) => m.id === mode) && res.modes?.currentModeId !== mode) {
-        try { await session.setMode(mode); } catch (err) { bus.emit('toast', { level: 'warn', text: `Modus ${mode} nicht gesetzt: ${err.message}` }); }
-      }
+      entryData.ownsSession = true;
       return id;
     } catch (err) {
       const msg = err?.message || String(err);
+      // während des Starts geschlossen: aufräumen, keinen Agenten wieder anlegen
+      if (closedDuringStart()) {
+        session.close();
+        throw new Error(`${tool.name ?? tool.id}: Start abgebrochen`);
+      }
       const a = session.get();
       if (a && a.status !== 'error') {
         state.upsert({ ...a, status: 'error', detail: null, error: { message: msg, stderrTail: client.stderrTail(30) }, lastActivity: Date.now() });
@@ -84,7 +105,7 @@ export function createSessionManager({
 
   async function createSession({ toolId, cwd, mode = 'confirm', title = null }) {
     const tool = toolOf(toolId);
-    if (mode && !MODES.includes(mode)) throw new Error(`Unbekannter Modus: ${mode}`);
+    if (mode && !MODES.includes(mode)) throw new Error(`Unbekannter Arena-Modus: ${mode}`);
     const dir = checkDir(cwd);
     return launch({
       tool, cwd: dir, mode, title, sessionId: randomUUID(),
@@ -102,7 +123,7 @@ export function createSessionManager({
     const dir = checkDir(w.cwd);
     const external = w.acpSessionId ?? w.sessionId;
     const id = await launch({
-      tool, cwd: dir, mode: 'confirm', title: w.title, sessionId: w.sessionId, acpSessionId: external,
+      tool, cwd: dir, mode: 'confirm', title: w.title, sessionId: w.sessionId, acpSessionId: external, adopted: true,
       open: async (client, session, init) => {
         if (!init.agentCapabilities?.loadSession) throw new Error('Tool kann Sessions nicht laden');
         return session.load(() => client.loadSession(external));
@@ -120,7 +141,8 @@ export function createSessionManager({
     await e.session.close();
     for (const s of state.all()) if (s.parentId === agentId) state.remove(s.id);
     state.remove(agentId);
-    try { if (a?.sessionId) repo?.endSession?.(a.sessionId, 'done'); } catch { /* DB optional */ }
+    // fehlgeschlagene Übernahme: die externe (Watcher-)Session bleibt offen
+    try { if (a?.sessionId && e.ownsSession) repo?.endSession?.(a.sessionId, 'done'); } catch { /* DB optional */ }
     return { ok: true };
   }
 
@@ -134,7 +156,13 @@ export function createSessionManager({
   async function setMode(agentId, modeId) {
     const e = entry(agentId);
     await e.session.setMode(modeId);
-    try { repo?.setSessionMode?.(e.session.get().sessionId, modeId); } catch { /* DB optional */ }
+    return { ok: true };
+  }
+
+  function setArenaMode(agentId, arenaMode) {
+    const e = entry(agentId);
+    e.session.setArenaMode(arenaMode);
+    try { repo?.setSessionMode?.(e.session.get().sessionId, arenaMode); } catch { /* DB optional */ }
     return { ok: true };
   }
 
@@ -152,5 +180,5 @@ export function createSessionManager({
     await Promise.all([...sessions.keys()].map((id) => close(id).catch(() => {})));
   }
 
-  return { createSession, adopt, close, prompt, cancel, setMode, answerPermission, get, has, stopAll, sessions };
+  return { createSession, adopt, close, prompt, cancel, setMode, setArenaMode, answerPermission, get, has, stopAll, sessions };
 }

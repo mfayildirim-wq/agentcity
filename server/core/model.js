@@ -60,6 +60,6 @@ export function createPermission(agentId, req) {
     id: randomUUID(), agentId, t: Date.now(), title: req.toolCall?.title ?? 'Berechtigung',
     toolCallId: req.toolCall?.toolCallId ?? null, kind: req.toolCall?.kind ?? 'other',
     content: req.toolCall?.content ?? [], locations: req.toolCall?.locations ?? [],
-    rawInput: req.toolCall?.rawInput ?? null, options: req.options, resolved: null,
+    rawInput: req.toolCall?.rawInput ?? null, options: Array.isArray(req.options) ? req.options : [], resolved: null,
   };
 }

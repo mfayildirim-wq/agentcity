@@ -129,6 +129,9 @@ test('session.create → agent.update; prompt → permission.request; answer →
   await assert.rejects(() => ws.request('permission.answer', { permissionId: req.permission.id, optionId: 'allow' }), /nicht \(mehr\) offen/);
   await ws.request('session.setMode', { agentId, modeId: 'auto' });
   await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.mode === 'auto');
+  await ws.request('session.setArenaMode', { agentId, arenaMode: 'auto' });
+  await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.arenaMode === 'auto');
+  await assert.rejects(() => ws.request('session.setArenaMode', { agentId, arenaMode: 'x' }), /Arena-Modus/);
 
   // langsamer Prompt + Abbruch
   await ws.request('session.prompt', { agentId, text: 'langsam' });

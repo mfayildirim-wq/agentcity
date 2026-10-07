@@ -13,12 +13,13 @@ function saveHistory(h) {
 }
 
 export class ChatBar {
-  constructor(el, { store, onSend, onCancel, onMode, onDeselect }) {
+  constructor(el, { store, onSend, onCancel, onMode, onArenaMode, onDeselect }) {
     this.el = el;
     this.store = store;
     this.onSend = onSend;
     this.onCancel = onCancel;
     this.onMode = onMode;
+    this.onArenaMode = onArenaMode;
     this.onDeselect = onDeselect;
     this.agentId = null;
     this.history = loadHistory();
@@ -30,7 +31,10 @@ export class ChatBar {
     el.innerHTML = `<div class="chat">
       <div class="c-head">
         <span class="av sm"></span><span class="c-name"></span>
-        <select class="c-mode" title="Modus"></select>
+        <div class="seg mini c-arena" title="Arena: Rückfragen bestätigen oder automatisch freigeben">
+          <button data-arena="confirm">Bestätigen</button><button data-arena="auto">Auto</button>
+        </div>
+        <select class="c-mode" title="Modus des Tools"></select>
         <button class="icon-btn sm c-toggle" title="Verlauf ein/aus">${svgIcon(ICON.chevDown)}</button>
       </div>
       <div class="c-log"></div>
@@ -50,6 +54,10 @@ export class ChatBar {
     this.input.addEventListener('keydown', (e) => this.onKey(e));
     this.input.addEventListener('input', () => this.autosize());
     this.sendBtn.addEventListener('click', () => (this.busy ? this.onCancel(this.agentId) : this.send()));
+    el.querySelector('.c-arena').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-arena]');
+      if (b && this.agent?.arenaMode !== b.dataset.arena) this.onArenaMode(this.agentId, b.dataset.arena);
+    });
     this.modeSel.addEventListener('change', () => this.onMode(this.agentId, this.modeSel.value));
     el.querySelector('.c-toggle').addEventListener('click', () => {
       this.collapsed = !this.collapsed;
@@ -153,6 +161,7 @@ export class ChatBar {
       this.modeSel.innerHTML = modes.map((m) => `<option value="${esc(m.id)}" ${m.id === a.mode ? 'selected' : ''}>${esc(m.name)}</option>`).join('');
     }
     this.modeSel.classList.toggle('hidden', modes.length < 2);
+    for (const b of this.el.querySelectorAll('[data-arena]')) b.classList.toggle('on', b.dataset.arena === (a.arenaMode ?? 'confirm'));
     const busy = isBusy(a);
     const dead = a.status === 'error';
     this.input.disabled = dead;

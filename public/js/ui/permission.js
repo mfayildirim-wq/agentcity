@@ -57,6 +57,7 @@ export class PermissionStack {
     window.addEventListener('keydown', (e) => {
       if (!this.list.length || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.target.closest?.('input, textarea, select, [contenteditable]')) return;
+      if (!document.getElementById('newsession')?.classList.contains('hidden')) return;
       const k = e.key.toLowerCase();
       if (k !== 'y' && k !== 'n') return;
       const p = this.list[0];
@@ -74,32 +75,49 @@ export class PermissionStack {
     Promise.resolve(this.onAnswer(permissionId, optionId)).catch(() => card?.classList.remove('busy'));
   }
 
+  // Nur bei geänderten Ids oder Agentennamen neu zeichnen; bestehende Karten bleiben erhalten
   render(permissions, agents) {
     const list = [...permissions.values()].sort((a, b) => a.t - b.t);
-    const ids = new Set(list.map((p) => p.id));
-    if (this.known && list.some((p) => !this.known.has(p.id))) chime();
-    this.known = ids;
+    const who = (p) => agents.get(p.subAgentId ?? p.agentId) ?? agents.get(p.agentId);
+    const sig = list.map((p) => { const a = who(p); return `${p.id}:${a ? agentName(a) : ''}:${a?.project ?? ''}`; }).join('|');
     this.list = list;
+    if (sig === this.sig) return;
+    this.sig = sig;
+    if (this.known && list.some((p) => !this.known.has(p.id))) chime();
+    this.known = new Set(list.map((p) => p.id));
     document.body.classList.toggle('has-perms', list.length > 0);
-    this.el.innerHTML = list.map((p, i) => {
-      const a = agents.get(p.subAgentId ?? p.agentId) ?? agents.get(p.agentId);
+
+    this.cards ??= new Map(); // permissionId → { el, head }
+    for (const [pid, c] of this.cards) if (!this.known.has(pid)) { c.el.remove(); this.cards.delete(pid); }
+    list.forEach((p, i) => {
+      let c = this.cards.get(p.id);
+      if (!c) {
+        const el = document.createElement('div');
+        el.className = 'perm-card';
+        el.dataset.card = p.id;
+        el.setAttribute('role', 'alertdialog');
+        el.setAttribute('aria-label', `Berechtigung: ${p.title}`);
+        el.style.setProperty('--c', (STATIONS[kindToCategory(p.kind)] ?? STATIONS.workbench).color);
+        el.innerHTML = `<div class="p-head"></div>${details(p)}<div class="p-opts"></div>`;
+        c = { el };
+        this.cards.set(p.id, c);
+      }
+      const a = who(p);
       const st = STATIONS[kindToCategory(p.kind)] ?? STATIONS.workbench;
-      const opts = p.options.map((o) => {
-        const allow = o.kind?.startsWith('allow');
-        const key = i === 0 && (o === p.options.find((x) => x.kind?.startsWith('allow')) ? 'Y' : o === p.options.find((x) => x.kind?.startsWith('reject')) ? 'N' : '');
-        return `<button class="p-btn ${allow ? 'allow' : 'reject'}" data-perm="${esc(p.id)}" data-opt="${esc(o.optionId)}" title="${esc(o.name)}">${esc(LABEL[o.kind] ?? o.name)}${key ? `<kbd>${key}</kbd>` : ''}</button>`;
-      }).join('');
-      return `<div class="perm-card" data-card="${esc(p.id)}" style="--c:${st.color}">
-        <div class="p-head">
+      c.el.querySelector('.p-head').innerHTML = `
           <span class="p-ic">${svgIcon(st.icon)}</span>
           <div class="p-title"><b>${esc(p.title)}</b>
             <span data-agent="${esc(a?.id ?? p.agentId)}"><i style="--c:${a ? agentColor(a) : '#888'}"></i>${esc(a ? agentName(a) : 'Agent')}${a?.project ? ` · ${esc(a.project)}` : ''}</span>
           </div>
-          <span class="p-hand" title="wartet auf dich">${svgIcon(ICON.hand)}</span>
-        </div>
-        ${details(p)}
-        <div class="p-opts">${opts}</div>
-      </div>`;
-    }).join('');
+          <span class="p-hand" title="wartet auf dich">${svgIcon(ICON.hand)}</span>`;
+      const firstAllow = p.options.find((x) => x.kind?.startsWith('allow'));
+      const firstReject = p.options.find((x) => x.kind?.startsWith('reject'));
+      c.el.querySelector('.p-opts').innerHTML = p.options.map((o) => {
+        const key = i === 0 ? (o === firstAllow ? 'Y' : o === firstReject ? 'N' : '') : '';
+        return `<button class="p-btn ${o.kind?.startsWith('allow') ? 'allow' : 'reject'}" data-perm="${esc(p.id)}" data-opt="${esc(o.optionId)}" title="${esc(o.name)}">${esc(LABEL[o.kind] ?? o.name)}${key ? `<kbd>${key}</kbd>` : ''}</button>`;
+      }).join('');
+      // Reihenfolge: älteste unten (column-reverse)
+      if (this.el.children[i] !== c.el) this.el.insertBefore(c.el, this.el.children[i] ?? null);
+    });
   }
 }

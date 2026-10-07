@@ -47,6 +47,7 @@ const chat = new ChatBar($('chat'), {
   onSend: (agentId, text) => request('session.prompt', { agentId, text }),
   onCancel: (agentId) => request('session.cancel', { agentId }).catch(() => {}),
   onMode: (agentId, modeId) => request('session.setMode', { agentId, modeId }).catch(() => {}),
+  onArenaMode: (agentId, arenaMode) => request('session.setArenaMode', { agentId, arenaMode }).catch(() => {}),
   onDeselect: () => select(null),
 });
 const perms = new PermissionStack($('perms'), {

@@ -10,7 +10,9 @@ import { createAgent } from '../server/core/model.js';
 import { openDb } from '../server/db/migrate.js';
 import { createRepo } from '../server/db/repo.js';
 import { createSessionManager } from '../server/acp/manager.js';
-import { isSubagentCall, toolDetail } from '../server/acp/session.js';
+import { EventEmitter } from 'node:events';
+import { isSubagentCall, toolDetail, diffPayload, createAcpSession } from '../server/acp/session.js';
+import { createRecorder } from '../server/db/recorder.js';
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const TOOLS = { fake: { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] } };
@@ -54,6 +56,7 @@ test('createSession: Agent mit Ids, Modi und DB-Zeile', async () => {
   assert.ok(a.sessionId && a.sessionId !== a.acpSessionId);
   assert.equal(a.status, 'waiting_user');
   assert.equal(a.mode, 'confirm');
+  assert.equal(a.arenaMode, 'confirm');
   assert.deepEqual(a.modes.map((m) => m.id), ['confirm', 'auto']);
   assert.equal(a.project, path.basename(cwd));
   assert.deepEqual(a.launch, { toolId: 'fake', cwd, mode: 'confirm', title: 'Test' });
@@ -159,7 +162,8 @@ test('Immer erlauben merkt sich das Werkzeug; Auto-Modus bestätigt sofort', asy
   assert.ok(events('permission', id).some((e) => e.auto && e.optionId === 'allow'));
 
   const auto = await manager.createSession({ toolId: 'fake', cwd, mode: 'auto' });
-  assert.equal(state.get(auto).mode, 'auto');
+  assert.equal(state.get(auto).arenaMode, 'auto');
+  assert.equal(state.get(auto).mode, 'confirm', 'Tool-Modus bleibt unberührt');
   assert.equal((await manager.prompt(auto, 'hi')).stopReason, 'end_turn');
   assert.equal(state.get(auto).plan.length, 2);
 });
@@ -180,7 +184,7 @@ test('setMode und paralleler Prompt wird abgelehnt', async () => {
   const id = await manager.createSession({ toolId: 'fake', cwd });
   await manager.setMode(id, 'auto');
   assert.equal(state.get(id).mode, 'auto');
-  assert.equal(repo.getSession(state.get(id).sessionId).mode, 'auto');
+  assert.equal(state.get(id).arenaMode, 'confirm');
   const p = manager.prompt(id, 'langsam');
   await assert.rejects(() => manager.prompt(id, 'zweiter'), /arbeitet noch/);
   await manager.cancel(id);
@@ -237,4 +241,121 @@ test('Hilfsfunktionen: Subagent-Erkennung und Details', () => {
   assert.equal(toolDetail({ command: 'ls -la' }), 'ls -la');
   assert.equal(toolDetail({ file_path: '/a/b.txt' }), '/a/b.txt');
   assert.equal(toolDetail(null), null);
+});
+
+test('Tool-Modus „auto“ gibt nichts frei; Arena-Modus auto beantwortet offene Rückfragen', async () => {
+  const id = await manager.createSession({ toolId: 'fake', cwd });
+  await manager.setMode(id, 'auto');
+  const done = manager.prompt(id, 'hi');
+  await waitFor(() => state.permissions.size === 1);
+  manager.setArenaMode(id, 'auto');
+  assert.equal(state.permissions.size, 0);
+  assert.equal((await done).stopReason, 'end_turn');
+  assert.equal(state.get(id).plan.length, 2);
+  assert.equal(repo.getSession(state.get(id).sessionId).mode, 'auto');
+  assert.throws(() => manager.setArenaMode(id, 'quatsch'), /Arena-Modus/);
+});
+
+test('Unbekannte und bereits beantwortete Permission-Id', async () => {
+  assert.throws(() => manager.answerPermission('gibt-es-nicht', 'allow'), /nicht \(mehr\) offen/);
+  const id = await manager.createSession({ toolId: 'fake', cwd });
+  const done = manager.prompt(id, 'hi');
+  await waitFor(() => state.permissions.size === 1);
+  const pid = [...state.permissions.keys()][0];
+  assert.throws(() => manager.answerPermission(pid, 'nope'), /Unbekannte Option/);
+  manager.answerPermission(pid, 'allow');
+  assert.throws(() => manager.answerPermission(pid, 'allow'), /nicht \(mehr\) offen/);
+  await done;
+});
+
+test('Agent stirbt bei offener Berechtigung → abgebrochen, Status error', async () => {
+  const id = await manager.createSession({ toolId: 'fake', cwd });
+  manager.prompt(id, 'stirb');
+  await waitFor(() => state.permissions.size === 1);
+  const pid = [...state.permissions.keys()][0];
+  await waitFor(() => state.get(id).status === 'error');
+  assert.equal(state.permissions.size, 0);
+  assert.equal(seen.find((m) => m.type === 'permission.resolved' && m.permissionId === pid).optionId, 'cancel');
+  assert.equal(state.get(id).error.code, 4);
+});
+
+test('initialize hängt → Zeitlimit, Prozess wird beendet', async () => {
+  TOOLS.haengt = { id: 'haengt', name: 'Hängt', command: process.execPath, args: [FAKE], env: { FAKE_HANG_INIT: '1' } };
+  const m = createSessionManager({ state, bus, repo, registry, startTimeoutMs: 200 });
+  await assert.rejects(() => m.createSession({ toolId: 'haengt', cwd }), /initialize: keine Antwort/);
+  const a = state.all().find((x) => x.toolId === 'haengt');
+  assert.equal(a.status, 'error');
+  const { client } = m.sessions.get(a.id);
+  await client.closed;
+  assert.ok(client.exited);
+  await m.stopAll();
+  assert.equal(state.get(a.id), undefined);
+  delete TOOLS.haengt;
+});
+
+test('close während des Starts → kein Geister-Agent', async () => {
+  TOOLS.haengt = { id: 'haengt', name: 'Hängt', command: process.execPath, args: [FAKE], env: { FAKE_HANG_INIT: '1' } };
+  const starting = manager.createSession({ toolId: 'haengt', cwd }).then(() => null, (err) => err);
+  const a = state.all().find((x) => x.toolId === 'haengt');
+  assert.ok(a, 'Agent erscheint sofort');
+  await manager.close(a.id);
+  assert.match((await starting)?.message ?? '', /abgebrochen/);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(state.get(a.id), undefined);
+  assert.equal(manager.has(a.id), false);
+  delete TOOLS.haengt;
+});
+
+test('Updates nach close legen den Agenten nicht neu an', async () => {
+  const client = new EventEmitter();
+  client.running = true;
+  client.stop = async () => {};
+  client.stderrTail = () => '';
+  const agent = createAgent({ id: 'a:stub', toolId: 'fake', sessionId: 's1', project: 'p', cwd });
+  agent.arenaMode = 'confirm';
+  state.upsert(agent);
+  const s = createAcpSession({ agent, client, state, bus, repo });
+  await s.close();
+  state.remove(agent.id);
+  client.emit('update', { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'spät' } });
+  client.emit('update', { sessionUpdate: 'tool_call', toolCallId: 'x', title: 'ls', kind: 'execute' });
+  client.emit('update', null);
+  client.emit('exit', { code: 1 });
+  let answered = null;
+  client.emit('permission', { toolCall: { toolCallId: 'x' }, options: [] }, (o) => { answered = o; });
+  assert.equal(state.get(agent.id), undefined);
+  assert.deepEqual(answered, { outcome: 'cancelled' });
+});
+
+test('Kaputte Updates werden abgefangen; doppelter tool_call zählt einmal', async () => {
+  const client = new EventEmitter();
+  client.running = true;
+  client.stop = async () => {};
+  const agent = createAgent({ id: 'a:stub2', toolId: 'fake', sessionId: 's2', project: 'p', cwd });
+  state.upsert(agent);
+  createAcpSession({ agent, client, state, bus, repo });
+  client.emit('update', { sessionUpdate: 'plan', entries: 'kein Array' });
+  client.emit('update', { sessionUpdate: 'tool_call_update', toolCallId: 'q', content: 'kein Array', status: 'completed' });
+  client.emit('update', { sessionUpdate: 'tool_call', toolCallId: 't', title: 'ls', kind: 'execute' });
+  client.emit('update', { sessionUpdate: 'tool_call', toolCallId: 't', title: 'ls -la', kind: 'execute' });
+  assert.equal(state.get(agent.id).toolCount, 1);
+  assert.equal(state.get(agent.id).tool, 'ls -la');
+  assert.deepEqual(state.get(agent.id).plan, []);
+});
+
+test('Diffs: Texte auf 64 KB gekürzt, DB speichert nur Pfad und Zeilen', () => {
+  const big = 'x'.repeat(70 * 1024);
+  const d = diffPayload({ path: '/p/a.txt', oldText: 'a\nb', newText: big });
+  assert.equal(d.newText.length, 64 * 1024);
+  assert.equal(d.truncated, true);
+  assert.equal(d.oldLines, 2);
+  assert.equal(diffPayload({ path: '/p/b', oldText: null, newText: 'n' }).truncated, undefined);
+  const rec = createRecorder({ bus, repo, state, flushMs: 1e6 });
+  bus.emit('event', { event: { id: 'e-diff', agentId: 'x', sessionId: 's9', t: 1, kind: 'diff', ...d } });
+  rec.stop();
+  const row = repo.db.prepare('SELECT payload FROM events WHERE id = ?').get('e-diff');
+  const payload = JSON.parse(row.payload);
+  assert.equal(payload.path, '/p/a.txt');
+  assert.equal(payload.newLines, 1);
+  assert.equal('newText' in payload || 'oldText' in payload, false);
 });
