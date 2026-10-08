@@ -1,4 +1,4 @@
-// Szene: ein Diorama-Raum pro Projekt, Stationen je Werkzeugart, Figuren laufen dorthin.
+// Szene: ein Diorama-Raum pro Haus (Auftrag), Stationen je Werkzeugart, Figuren laufen dorthin.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -6,7 +6,8 @@ import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Avatar } from './avatar.js';
 import { agentColor } from './config.js';
-import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR } from './room.js';
+import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR, STREET } from './room.js';
+import { houseOf, houseName } from './houses.js';
 import { Town } from './town.js';
 import { MAX_LIVE_SCREENS } from './screen.js';
 
@@ -302,11 +303,11 @@ export class World {
   }
 
   // ---------------------------------------------------------------- Räume
-  roomFor(name) {
-    let room = this.rooms.get(name);
+  roomFor(id) {
+    let room = this.rooms.get(id);
     if (!room) {
-      room = new Room(name, this);
-      this.rooms.set(name, room);
+      room = new Room(id, this);
+      this.rooms.set(id, room);
       this.scene.add(room.group);
       this.layoutRooms();
     }
@@ -379,10 +380,12 @@ export class World {
   // ---------------------------------------------------------------- Daten → Szene
   sync(agents) {
     const live = new Set(agents.map((a) => a.id));
+    // Räume nach Haus (Auftrag), nicht nach Ordner
     const byRoom = new Map();
     for (const a of agents) {
-      if (!byRoom.has(a.project)) byRoom.set(a.project, []);
-      byRoom.get(a.project).push(a);
+      const k = houseOf(a);
+      if (!byRoom.has(k)) byRoom.set(k, []);
+      byRoom.get(k).push(a);
     }
 
     // Räume anlegen/aufräumen
@@ -393,12 +396,14 @@ export class World {
         room.dispose(); this.rooms.delete(name); changed = true;
       }
     }
+    // Raumschild: Name aus dem ältesten Hauptagenten, Ordner als Untertitel
+    for (const [name, list] of byRoom) this.rooms.get(name).setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project);
     if (changed) { this.layoutRooms(); if (!this.selected) this.resetView(); }
 
     // Figuren anlegen/aktualisieren
     for (const a of agents) {
       let av = this.avatars.get(a.id);
-      const room = this.rooms.get(a.project);
+      const room = this.rooms.get(houseOf(a));
       // Aussehen geändert (Farbe/Stil des Tools): Figur an gleicher Stelle neu aufbauen
       if (av && !av.leaving && av.look !== Avatar.lookOf(a)) {
         const old = av;
@@ -423,12 +428,15 @@ export class World {
         av.room = room;
         av.setLabelsVisible(this.labelsVisible);
         room.group.add(av.group);
-        // Subagenten erscheinen am Besprechungstisch neben dem Erzeuger, Hauptagenten am Eingang
+        // Subagenten erscheinen am Besprechungstisch neben dem Erzeuger, Hauptagenten kommen von der Straße durch die Tür
         const parent = a.parentId && this.avatars.get(a.parentId);
         if (parent && parent.room === room) {
           av.group.position.copy(parent.group.position).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0, 0.8));
         } else {
-          av.group.position.copy(DOOR);
+          av.group.position.copy(STREET);
+          av.entering = true;
+          av.opacity = 1; // auf der Straße sofort sichtbar, kein Einblenden
+          av.setOpacity(1);
         }
         this.avatars.set(a.id, av);
       }
@@ -436,7 +444,7 @@ export class World {
     }
     for (const [key, av] of this.avatars) {
       if (!live.has(key)) {
-        av.leave(DOOR.clone());
+        av.leave([DOOR.clone(), STREET.clone()]); // durch die Tür hinaus, auf der Straße verblassen
         if (this.selected === key) this.onSelect?.(null);
       }
     }
@@ -501,7 +509,11 @@ export class World {
     }
     av.atStation = false;
     av.atLounge = false;
-    av.walkTo(this.route(room, av.group.position, slot.pos));
+    // Neuankömmlinge laufen erst zur Tür, dann im Raum weiter
+    const from = av.entering ? DOOR : av.group.position;
+    const pts = this.route(room, from, slot.pos);
+    av.walkTo(av.entering ? [DOOR.clone(), ...pts] : pts);
+    av.entering = false;
     av.setFacing(slot.facing);
     av.arrive = () => {
       av.atStation = st.id !== 'lounge';
@@ -586,6 +598,9 @@ export class World {
     for (const [key, av] of this.avatars) {
       const hadPath = av.path.length > 0;
       av.tick(dt, t);
+      // Höhe: vor der Tür auf Straßenniveau, im Raum auf dem Boden
+      const wantY = av.group.position.z > ROOM_D / 2 + 0.25 ? -0.45 : 0;
+      av.group.position.y += (wantY - av.group.position.y) * Math.min(1, dt * 6);
       if (hadPath && !av.path.length) av.arrive?.();
       if (av.removed) {
         av.group.removeFromParent();

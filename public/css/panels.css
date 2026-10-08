@@ -248,6 +248,17 @@ body.has-chat .detail { max-height: calc(100vh - 80px); }
 
 /* ------------------------------------------------------------ Paket 3: Agenten-Tools, Tool-Auswahl */
 .ns-tool.off { opacity: 0.45; cursor: not-allowed; filter: grayscale(0.7); }
+.ns-houses { display: flex; flex-wrap: wrap; gap: 6px; max-height: 96px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.12) transparent; }
+.ns-house {
+  display: flex; align-items: center; gap: 6px; padding: 5px 10px 5px 7px; border-radius: 8px; cursor: pointer; max-width: 100%;
+  border: 1px solid var(--line-2); background: rgba(255,255,255,.03); color: var(--tx-2); font-size: 12px;
+}
+.ns-house .ic { width: 13px; height: 13px; color: var(--tx-3); flex: none; }
+.ns-house span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 190px; }
+.ns-house em { font-style: normal; font-size: 10.5px; color: var(--tx-3); white-space: nowrap; }
+.ns-house:hover { color: var(--tx); }
+.ns-house.on { border-color: rgba(217, 119, 87, 0.6); background: rgba(217, 119, 87, 0.14); color: var(--tx); }
+.ns-house.on .ic { color: var(--accent); }
 .ns-tool em { font-style: normal; font-size: 10px; color: var(--tx-3); border: 1px solid var(--line-2); border-radius: 4px; padding: 0 4px; }
 .btn.danger { background: rgba(229, 83, 75, 0.18); border-color: rgba(229, 83, 75, 0.45); color: #f2867f; }
 

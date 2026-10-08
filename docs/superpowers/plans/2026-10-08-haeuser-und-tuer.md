@@ -288,7 +288,7 @@ export function housesFor(agents) {
 - Modify: `public/js/ui/list.js:54-82`, `public/js/ui/stats.js:6`, `public/js/replay.js:93`, `public/js/demo.js`
 - Modify: `public/css/app.css:210-217`
 
-- [ ] **Step 1: room.js** – Konstruktor `constructor(id, world)`; `this.id = id; this.name = id;` Label: `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`; Methode:
+- [x] **Step 1: room.js** – Konstruktor `constructor(id, world)`; `this.id = id; this.name = id;` Label: `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`; Methode:
 
 ```js
   setName(name, project) {
@@ -298,13 +298,13 @@ export function housesFor(agents) {
   }
 ```
 
-- [ ] **Step 2: world.js** – `import { houseOf, houseName } from './houses.js';` In `sync`: `byRoom` nach `houseOf(a)`; `this.rooms.get(houseOf(a))`; nach dem Anlegen je Raum `room.setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project)`. `layoutRooms` sortiert weiter nach `order`, dann `name`.
+- [x] **Step 2: world.js** – `import { houseOf, houseName } from './houses.js';` In `sync`: `byRoom` nach `houseOf(a)`; `this.rooms.get(houseOf(a))`; nach dem Anlegen je Raum `room.setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project)`. `layoutRooms` sortiert weiter nach `order`, dann `name`.
 
-- [ ] **Step 3: list.js** – Gruppen über `groupByHouse`; Kopf: `<span class="grp-name">${esc(houseName(list))}</span><span class="grp-proj">${esc(project)}</span><span class="grp-n">…`; `data-toggle` = Haus-Id. stats.js: `new Set(agents.map(houseOf)).size`. replay.js: Agenten aus Sessions bekommen `house: s.houseId ?? s.id`. demo.js: `addMain` setzt `house: id`, `spawnSub` setzt `house: parent.house`; vierten Hauptagenten anlegen: `this.addMain('restaurant-app', 'Checkout-Flow prüfen', now - 3 * 60e3)` → zwei Häuser im selben Ordner sichtbar.
+- [x] **Step 3: list.js** – Gruppen über `groupByHouse`; Kopf: `<span class="grp-name">${esc(houseName(list))}</span><span class="grp-proj">${esc(project)}</span><span class="grp-n">…`; `data-toggle` = Haus-Id. stats.js: `new Set(agents.map(houseOf)).size`. replay.js: Agenten aus Sessions bekommen `house: s.houseId ?? s.id`. demo.js: `addMain` setzt `house: id`, `spawnSub` setzt `house: parent.house`; vierten Hauptagenten anlegen: `this.addMain('restaurant-app', 'Checkout-Flow prüfen', now - 3 * 60e3)` → zwei Häuser im selben Ordner sichtbar.
 
-- [ ] **Step 4: CSS** – `.room-proj, .grp-proj { color: var(--tx-3); font-size: 11px; margin-left: 6px; }`; `.room-name` auf 160 px mit Ellipsis begrenzen (`max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
+- [x] **Step 4: CSS** – `.room-proj, .grp-proj { color: var(--tx-3); font-size: 11px; margin-left: 6px; }`; `.room-name` auf 160 px mit Ellipsis begrenzen (`max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
 
-- [ ] **Step 5: Prüfen** – `npm test` grün; `?demo`: vier Häuser, zwei mit Untertitel „restaurant-app“; Namen stammen aus den Titeln. **Step 6: Commit** – `feat(web): Räume und Liste nach Haus`.
+- [x] **Step 5: Prüfen** – `npm test` grün; `?demo`: vier Häuser, zwei mit Untertitel „restaurant-app“; Namen stammen aus den Titeln. **Step 6: Commit** – `feat(web): Räume und Liste nach Haus`.
 
 ### Task 2.3: Dialog „Neue Session“: Haus wählen
 
@@ -312,7 +312,7 @@ export function housesFor(agents) {
 - Modify: `public/js/ui/newsession.js`
 - Modify: `public/css/panels.css` (Abschnitt `.ns-…`)
 
-- [ ] **Step 1: Zustand** – `this.houseId = null` (null = neues Haus). Im `build()` nach dem Tool-Abschnitt:
+- [x] **Step 1: Zustand** – `this.houseId = null` (null = neues Haus). Im `build()` nach dem Tool-Abschnitt:
 
 ```html
       <div class="ns-label">Haus</div>
@@ -340,11 +340,11 @@ export function housesFor(agents) {
 
 Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { this.houseId = house.dataset.house || null; this.drawHouses(); return; }`. `submit()`: `houseId: this.houseId` mitsenden; bei Beitritt die cwd-Pflichtprüfung überspringen. Nach `onCreated` bleibt `houseId` gespeichert? Nein – beim nächsten `open()` auf `null` zurücksetzen (Standard: neues Haus). `ICON.home` in `ui/common.js` ergänzen, falls nicht vorhanden (Pfad: `M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z`).
 
-- [ ] **Step 2: CSS** – `.ns-houses { display:flex; flex-wrap:wrap; gap:6px; }`, `.ns-house` im Stil von `.ns-tool` (kompakt, `em` klein in `var(--tx-3)`), `.on` hervorgehoben; `.hidden { display:none }` existiert bereits.
+- [x] **Step 2: CSS** – `.ns-houses { display:flex; flex-wrap:wrap; gap:6px; }`, `.ns-house` im Stil von `.ns-tool` (kompakt, `em` klein in `var(--tx-3)`), `.on` hervorgehoben; `.hidden { display:none }` existiert bereits.
 
-- [ ] **Step 3: main.js** – `store.subscribe`: bei `changes.has('agents')` und `newSession.isOpen` → `newSession.drawHouses()`.
+- [x] **Step 3: main.js** – `store.subscribe`: bei `changes.has('agents')` und `newSession.isOpen` → `newSession.drawHouses()`.
 
-- [ ] **Step 4: Prüfen** – Dialog zeigt „Neues Haus“ + laufende Häuser; Beitritt blendet den Ordnerwähler aus. **Step 5: Commit** – `feat(web): Haus im Dialog wählen`.
+- [x] **Step 4: Prüfen** – Dialog zeigt „Neues Haus“ + laufende Häuser; Beitritt blendet den Ordnerwähler aus. **Step 5: Commit** – `feat(web): Haus im Dialog wählen`.
 
 ---
 
@@ -357,11 +357,11 @@ Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { thi
 - Modify: `public/js/world.js:348-369, 412-437, 509-523`
 - Modify: `public/js/avatar.js:270-274`
 
-- [ ] **Step 1: room.js** – `export const STREET = new THREE.Vector3(0, -0.45, ROOM_D / 2 + 3.2);` (lokale Koordinaten, auf Straßenhöhe). Türrahmen vorn am Türpunkt: zwei Pfosten `box(0.12, 2.2, 0.12, M.wallTop, ±0.75, 0, hd + 0.2)` und Sturz `box(1.62, 0.12, 0.12, M.wallTop, 0, 2.2, hd + 0.2)`; eine Stufe `box(1.8, 0.45, 0.6, M.floorEdge, 0, -0.45, hd + 0.55)` (castShadow false).
+- [x] **Step 1: room.js** – `export const STREET = new THREE.Vector3(0, -0.45, ROOM_D / 2 + 3.2);` (lokale Koordinaten, auf Straßenhöhe). Türrahmen vorn am Türpunkt: zwei Pfosten `box(0.12, 2.2, 0.12, M.wallTop, ±0.75, 0, hd + 0.2)` und Sturz `box(1.62, 0.12, 0.12, M.wallTop, 0, 2.2, hd + 0.2)`; eine Stufe `box(1.8, 0.45, 0.6, M.floorEdge, 0, -0.45, hd + 0.55)` (castShadow false).
 
-- [ ] **Step 2: avatar.js** – `leave(points)`: `this.walkTo(Array.isArray(points) ? points : [points]);` Ausblenden erst, wenn der Weg abgelaufen ist (ist schon so: `want = leaving && !path.length ? 0 : 1`).
+- [x] **Step 2: avatar.js** – `leave(points)`: `this.walkTo(Array.isArray(points) ? points : [points]);` Ausblenden erst, wenn der Weg abgelaufen ist (ist schon so: `want = leaving && !path.length ? 0 : 1`).
 
-- [ ] **Step 3: world.js** –
+- [x] **Step 3: world.js** –
   - Import `STREET` aus `./room.js`.
   - Neue Hauptfigur (ohne Elternteil im Raum): `av.group.position.copy(STREET); av.entering = true;`
   - `place()`: vor `walkTo`: 
@@ -379,12 +379,12 @@ Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { thi
     ```
   - Beim Betreten sofort sichtbar: `av.setOpacity(1); av.opacity = 1;` für Hauptfiguren, die auf der Straße starten (Einblenden bleibt für Subagenten am Tisch).
 
-- [ ] **Step 4: Prüfen** – `?demo`: Nach Neuladen laufen die drei Hauptfiguren von der Straße durch die Türen; endet ein Demo-Subagent, bleibt alles wie bisher. Live: neue Session (`N`) → Figur kommt von vorn herein; Session schließen → Figur geht durch die Tür hinaus und verblasst auf der Straße.
+- [x] **Step 4: Prüfen** – `?demo`: Nach Neuladen laufen die drei Hauptfiguren von der Straße durch die Türen; endet ein Demo-Subagent, bleibt alles wie bisher. Live: neue Session (`N`) → Figur kommt von vorn herein; Session schließen → Figur geht durch die Tür hinaus und verblasst auf der Straße.
 
-- [ ] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(web): Figuren kommen durch die Tür`.
+- [x] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(web): Figuren kommen durch die Tür`.
 
 ### Task 3.2: Abschluss
 
-- [ ] `npm test` grün; `?demo` wie oben; Live-Zyklus: Haus A starten („mach eine kleine Webseite“), zweiten Agenten mit Beitritt zu Haus A starten → er meldet sich mit einem Satz; Liste zeigt ein Haus mit zwei Hauptagenten; Raumschild zeigt den Auftrag und darunter den Ordner.
-- [ ] README: Abschnitt „Häuser“ (3–5 Sätze: Haus = Auftrag, Beitritt, Kontext-Prompt, Tür).
-- [ ] Commit `docs: Häuser und Tür`.
+- [x] `npm test` grün; `?demo` wie oben; Live-Zyklus: Haus A starten („mach eine kleine Webseite“), zweiten Agenten mit Beitritt zu Haus A starten → er meldet sich mit einem Satz; Liste zeigt ein Haus mit zwei Hauptagenten; Raumschild zeigt den Auftrag und darunter den Ordner.
+- [x] README: Abschnitt „Häuser“ (3–5 Sätze: Haus = Auftrag, Beitritt, Kontext-Prompt, Tür).
+- [x] Commit `docs: Häuser und Tür`.

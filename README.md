@@ -1,7 +1,7 @@
 # Agent City
 
 3D-Arbeitsumgebung für KI-Coding-Agenten im Browser. Jede Session ist eine Figur, jeder Subagent eine eigene
-Figur, jedes Projekt ein eigener Raum. Agenten verschiedener Tools (Claude Code, Codex, OpenCode, Hermes, Gemini
+Figur, jedes Haus (ein Auftrag mit Hauptagent und Subagenten) ein eigener Raum. Agenten verschiedener Tools (Claude Code, Codex, OpenCode, Hermes, Gemini
 und eigene) lassen sich starten, im Chat oder Terminal steuern, Rückfragen im Browser bestätigen, in Besprechungen
 zusammenbringen, mit Aufgaben versorgen und später im Verlauf nachsehen und fortsetzen. Sessions, die du im eigenen
 Terminal startest, erscheinen ebenfalls (Dateibeobachtung) und lassen sich übernehmen.
@@ -23,8 +23,9 @@ Port belegt? `PORT=4318 agentcity`. Pro Datenordner läuft nur ein Server; einen
 `AGENTCITY_DATA_DIR` (eigenes Token, eigener Link). Demo ohne Agenten: http://127.0.0.1:4317/?demo (oder ▶-Knopf oben
 rechts).
 
-Neue Session: „+“ (oder `N`) → Tool wählen, Projektordner (zuletzt verwendete oben), Modus *Bestätigen* (Rückfragen
-im Browser) oder *Auto* (Rückfragen automatisch freigeben), optional Titel. Die Steuerung läuft über das
+Neue Session: „+“ (oder `N`) → Tool wählen, Haus (*Neues Haus* oder Beitritt zu einem laufenden, siehe unten),
+Projektordner (zuletzt verwendete oben), Modus *Bestätigen* (Rückfragen im Browser) oder *Auto* (Rückfragen
+automatisch freigeben), optional Titel. Die Steuerung läuft über das
 [Agent Client Protocol](https://agentclientprotocol.com) (ACP) per stdio.
 
 ## Was du siehst
@@ -50,6 +51,16 @@ im Browser) oder *Auto* (Rückfragen automatisch freigeben), optional Titel. Die
   City-Modus (Bestätigen/Auto) in der Kopfzeile
 - Berechtigungskarten unten rechts: Erlauben / Immer (für dieses Werkzeug in der Session) / Ablehnen, mit Befehl,
   Pfaden und Diff-Vorschau; kurzer Ton bei neuen Rückfragen
+
+## Häuser
+
+Ein Haus ist ein Auftrag, nicht der Projektordner: der Hauptagent und seine Subagenten wohnen in einem Raum, das
+Raumschild zeigt den Titel bzw. ersten Prompt und darunter den Ordner – zwei Aufträge im selben Ordner sind zwei
+Häuser. Im Dialog „Neue Session“ wählst du *Neues Haus* oder trittst einem laufenden Haus bei; der neue Agent
+übernimmt dann den Ordner des Hauses und bekommt als ersten Prompt den Kontext (Auftrag und letzter Stand des
+ältesten Hauptagenten), meldet sich mit einem Satz und wartet auf Anweisungen. Neue Hauptfiguren kommen von der
+Straße durch die Tür an der Vorderseite herein; beendete Sessions gehen durch die Tür hinaus und verblassen auf der
+Straße.
 
 ## Tools hinzufügen
 

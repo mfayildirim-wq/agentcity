@@ -286,6 +286,7 @@ store.subscribe((s, changes) => {
     if (settings.isOpen) settings.load(); // Änderung aus einem anderen Fenster
   }
   const agents = store.agentList();
+  if (changes.has('agents') && newSession.isOpen) newSession.drawHouses();
   // Teilnehmer offener Besprechungen bleiben am Tisch
   const meetingMoved = (changes.has('meetings') || changes.has('agents'))
     && world.setMeetingIds(store.openMeetings().flatMap((m) => m.participantIds));

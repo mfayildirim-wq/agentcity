@@ -86,6 +86,8 @@ body.panel-off .panel { transform: translateX(calc(100% + 20px)); opacity: 0; po
 .grp-head:hover { color: var(--tx); }
 .grp-head.active .grp-name::after { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #3fb67a; margin-left: 6px; vertical-align: middle; }
 .grp-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp-proj { color: var(--tx-3); font-size: 11px; font-weight: 500; text-transform: none; letter-spacing: 0; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.grp-proj:empty { display: none; }
 .grp-n { font-weight: 500; color: var(--tx-3); font-variant-numeric: tabular-nums; }
 .chev { width: 12px; height: 12px; transition: transform 0.15s; }
 .chev.open { transform: rotate(90deg); }
@@ -215,6 +217,9 @@ body.panel-off .legend { transform: translateX(-50%); }
 }
 .room-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tx-3); }
 .room-label.active .room-dot { background: #3fb67a; animation: pulse 2s infinite; }
+.room-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room-proj { color: var(--tx-3); font-size: 11px; font-weight: 500; }
+.room-proj:empty { display: none; }
 .room-count { color: var(--tx-3); font-weight: 500; font-variant-numeric: tabular-nums; }
 
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }

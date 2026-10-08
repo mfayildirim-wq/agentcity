@@ -1,4 +1,4 @@
-// Raum eines Projekts: Boden, Wände, Möbel, Stationen je Werkzeugart (aus world.js herausgelöst).
+// Raum eines Hauses (Auftrag): Boden, Wände, Möbel, Stationen je Werkzeugart (aus world.js herausgelöst).
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { STATIONS } from './config.js';
@@ -10,6 +10,8 @@ export const ROOM_GAP = 5;
 export const DOOR = new THREE.Vector3(0, 0, ROOM_D / 2 - 0.4);
 export const WALL_H = 3.4; // hoch genug für die Leinwand (4,8 × 2,7, Mitte y = 1,9)
 export const SCREEN_POS = new THREE.Vector3(0.6, 1.9, -ROOM_D / 2 + 0.06); // Leinwand an der Rückwand
+// Punkt auf der Straße vor der Tür (lokal, auf Straßenhöhe): hier kommen neue Figuren an und gehen beim Verlassen hin
+export const STREET = new THREE.Vector3(0, -0.45, ROOM_D / 2 + 3.2);
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.02, ...extra });
 const M = {
@@ -149,8 +151,10 @@ function stationPad(x, z, w, d, color) {
 
 // ---------------------------------------------------------------- Raum
 export class Room {
-  constructor(name, world) {
-    this.name = name;
+  constructor(id, world) {
+    this.id = id;
+    this.name = id;
+    this.project = '';
     this.world = world;
     this.group = new THREE.Group();
     this.animated = [];
@@ -280,6 +284,12 @@ export class Room {
     door.rotation.x = -Math.PI / 2;
     door.position.set(0, 0.005, hd - 0.25);
     g.add(door);
+    // Türrahmen an der Vorderseite und eine Stufe hinunter zur Straße
+    for (const sx of [-0.75, 0.75]) g.add(box(0.12, 2.2, 0.12, M.wallTop, sx, 0, hd + 0.2));
+    g.add(box(1.62, 0.12, 0.12, M.wallTop, 0, 2.2, hd + 0.2));
+    const step = box(1.8, 0.45, 0.6, M.floorEdge, 0, -0.45, hd + 0.55);
+    step.castShadow = false;
+    g.add(step);
 
     // Hindernisse für einfache Wegplanung (Kreis, lokal)
     this.obstacles = [
@@ -318,7 +328,7 @@ export class Room {
   buildLabel() {
     const el = document.createElement('div');
     el.className = 'room-label';
-    el.innerHTML = `<span class="room-dot"></span><span class="room-name"></span><span class="room-count"></span>`;
+    el.innerHTML = `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`;
     el.querySelector('.room-name').textContent = this.name;
     this.countEl = el.querySelector('.room-count');
     this.labelEl = el;
@@ -327,6 +337,13 @@ export class Room {
     lbl.center.set(0, 0.5);
     this.group.add(lbl);
     this.label = lbl;
+  }
+
+  // Raumschild: Hausname (Auftrag), Ordnername als Untertitel – nur wenn er nicht ohnehin der Name ist
+  setName(name, project) {
+    if (name !== this.name) { this.name = name; this.labelEl.querySelector('.room-name').textContent = name; }
+    const p = project && project !== name ? project : '';
+    if (p !== this.project) { this.project = p; this.labelEl.querySelector('.room-proj').textContent = p; }
   }
 
   tick(t, dt) {

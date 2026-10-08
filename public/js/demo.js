@@ -66,12 +66,14 @@ export class Demo {
     this.addMain('restaurant-app', 'Bestellungen in Echtzeit synchronisieren', now - 22 * 60e3);
     this.addMain('agentcity', '3D-Stadt für KI-Coding-Agenten', now - 8 * 60e3);
     this.addMain('ai-trade-app', 'Backtesting-Dashboard', now - 41 * 60e3, 'waiting_user');
+    // zweites Haus im selben Ordner: ein Haus ist ein Auftrag, nicht der Projektordner
+    this.addMain('restaurant-app', 'Checkout-Flow prüfen', now - 3 * 60e3);
   }
 
   addMain(project, title, startedAt, status = 'thinking') {
     const id = `m:demo-${++this.n}`;
     this.agents.set(id, {
-      id, kind: 'main', sessionId: id, parentId: null, toolId: 'claude', source: 'demo', controllable: false, project, cwd: `~/myProjects/${project}`,
+      id, kind: 'main', sessionId: id, house: id, parentId: null, toolId: 'claude', source: 'demo', controllable: false, project, cwd: `~/myProjects/${project}`,
       title, description: null, agentType: null, model: 'claude-opus-5-5',
       status, tool: null, category: null, detail: null,
       lastText: 'Ich schaue mir zuerst die bestehende Struktur an und lege dann los.',
@@ -85,7 +87,7 @@ export class Demo {
     const [type, desc] = pick(SUB_TYPES);
     const id = `s:demo-${++this.n}`;
     this.agents.set(id, {
-      id, kind: 'sub', sessionId: parent.sessionId, parentId: parent.id, toolId: 'claude', source: 'demo', controllable: false, project: parent.project, cwd: parent.cwd,
+      id, kind: 'sub', sessionId: parent.sessionId, house: parent.house, parentId: parent.id, toolId: 'claude', source: 'demo', controllable: false, project: parent.project, cwd: parent.cwd,
       title: null, description: desc, agentType: type, model: type === 'Explore' ? 'claude-haiku-4-5' : 'claude-sonnet-5-5',
       status: 'thinking', tool: null, category: null, detail: null, lastText: null, lastPrompt: null,
       lastActivity: Date.now(), startedAt: Date.now(), tokens: { input: 0, output: 0, cache: 0 }, toolCount: 0, events: [],
