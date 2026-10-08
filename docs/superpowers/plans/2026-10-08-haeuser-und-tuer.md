@@ -357,11 +357,11 @@ Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { thi
 - Modify: `public/js/world.js:348-369, 412-437, 509-523`
 - Modify: `public/js/avatar.js:270-274`
 
-- [ ] **Step 1: room.js** – `export const STREET = new THREE.Vector3(0, -0.45, ROOM_D / 2 + 3.2);` (lokale Koordinaten, auf Straßenhöhe). Türrahmen vorn am Türpunkt: zwei Pfosten `box(0.12, 2.2, 0.12, M.wallTop, ±0.75, 0, hd + 0.2)` und Sturz `box(1.62, 0.12, 0.12, M.wallTop, 0, 2.2, hd + 0.2)`; eine Stufe `box(1.8, 0.45, 0.6, M.floorEdge, 0, -0.45, hd + 0.55)` (castShadow false).
+- [x] **Step 1: room.js** – `export const STREET = new THREE.Vector3(0, -0.45, ROOM_D / 2 + 3.2);` (lokale Koordinaten, auf Straßenhöhe). Türrahmen vorn am Türpunkt: zwei Pfosten `box(0.12, 2.2, 0.12, M.wallTop, ±0.75, 0, hd + 0.2)` und Sturz `box(1.62, 0.12, 0.12, M.wallTop, 0, 2.2, hd + 0.2)`; eine Stufe `box(1.8, 0.45, 0.6, M.floorEdge, 0, -0.45, hd + 0.55)` (castShadow false).
 
-- [ ] **Step 2: avatar.js** – `leave(points)`: `this.walkTo(Array.isArray(points) ? points : [points]);` Ausblenden erst, wenn der Weg abgelaufen ist (ist schon so: `want = leaving && !path.length ? 0 : 1`).
+- [x] **Step 2: avatar.js** – `leave(points)`: `this.walkTo(Array.isArray(points) ? points : [points]);` Ausblenden erst, wenn der Weg abgelaufen ist (ist schon so: `want = leaving && !path.length ? 0 : 1`).
 
-- [ ] **Step 3: world.js** –
+- [x] **Step 3: world.js** –
   - Import `STREET` aus `./room.js`.
   - Neue Hauptfigur (ohne Elternteil im Raum): `av.group.position.copy(STREET); av.entering = true;`
   - `place()`: vor `walkTo`: 
@@ -379,9 +379,9 @@ Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { thi
     ```
   - Beim Betreten sofort sichtbar: `av.setOpacity(1); av.opacity = 1;` für Hauptfiguren, die auf der Straße starten (Einblenden bleibt für Subagenten am Tisch).
 
-- [ ] **Step 4: Prüfen** – `?demo`: Nach Neuladen laufen die drei Hauptfiguren von der Straße durch die Türen; endet ein Demo-Subagent, bleibt alles wie bisher. Live: neue Session (`N`) → Figur kommt von vorn herein; Session schließen → Figur geht durch die Tür hinaus und verblasst auf der Straße.
+- [x] **Step 4: Prüfen** – `?demo`: Nach Neuladen laufen die drei Hauptfiguren von der Straße durch die Türen; endet ein Demo-Subagent, bleibt alles wie bisher. Live: neue Session (`N`) → Figur kommt von vorn herein; Session schließen → Figur geht durch die Tür hinaus und verblasst auf der Straße.
 
-- [ ] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(web): Figuren kommen durch die Tür`.
+- [x] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(web): Figuren kommen durch die Tür`.
 
 ### Task 3.2: Abschluss
 

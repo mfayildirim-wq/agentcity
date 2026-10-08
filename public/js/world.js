@@ -5,7 +5,7 @@ import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Avatar } from './avatar.js';
 import { agentColor } from './config.js';
-import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR } from './room.js';
+import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR, STREET } from './room.js';
 import { houseOf, houseName } from './houses.js';
 import { Town } from './town.js';
 
@@ -359,12 +359,15 @@ export class World {
         av.room = room;
         av.setLabelsVisible(this.labelsVisible);
         room.group.add(av.group);
-        // Subagenten erscheinen am Besprechungstisch neben dem Erzeuger, Hauptagenten am Eingang
+        // Subagenten erscheinen am Besprechungstisch neben dem Erzeuger, Hauptagenten kommen von der Straße durch die Tür
         const parent = a.parentId && this.avatars.get(a.parentId);
         if (parent && parent.room === room) {
           av.group.position.copy(parent.group.position).add(new THREE.Vector3((Math.random() - 0.5) * 1.2, 0, 0.8));
         } else {
-          av.group.position.copy(DOOR);
+          av.group.position.copy(STREET);
+          av.entering = true;
+          av.opacity = 1; // auf der Straße sofort sichtbar, kein Einblenden
+          av.setOpacity(1);
         }
         this.avatars.set(a.id, av);
       }
@@ -372,7 +375,7 @@ export class World {
     }
     for (const [key, av] of this.avatars) {
       if (!live.has(key)) {
-        av.leave(DOOR.clone());
+        av.leave([DOOR.clone(), STREET.clone()]); // durch die Tür hinaus, auf der Straße verblassen
         if (this.selected === key) this.onSelect?.(null);
       }
     }
@@ -437,7 +440,11 @@ export class World {
     }
     av.atStation = false;
     av.atLounge = false;
-    av.walkTo(this.route(room, av.group.position, slot.pos));
+    // Neuankömmlinge laufen erst zur Tür, dann im Raum weiter
+    const from = av.entering ? DOOR : av.group.position;
+    const pts = this.route(room, from, slot.pos);
+    av.walkTo(av.entering ? [DOOR.clone(), ...pts] : pts);
+    av.entering = false;
     av.setFacing(slot.facing);
     av.arrive = () => {
       av.atStation = st.id !== 'lounge';
@@ -522,6 +529,9 @@ export class World {
     for (const [key, av] of this.avatars) {
       const hadPath = av.path.length > 0;
       av.tick(dt, t);
+      // Höhe: vor der Tür auf Straßenniveau, im Raum auf dem Boden
+      const wantY = av.group.position.z > ROOM_D / 2 + 0.25 ? -0.45 : 0;
+      av.group.position.y += (wantY - av.group.position.y) * Math.min(1, dt * 6);
       if (hadPath && !av.path.length) av.arrive?.();
       if (av.removed) {
         av.group.removeFromParent();

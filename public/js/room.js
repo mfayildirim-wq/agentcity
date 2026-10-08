@@ -7,6 +7,8 @@ export const ROOM_W = 16;
 export const ROOM_D = 12;
 export const ROOM_GAP = 5;
 export const DOOR = new THREE.Vector3(0, 0, ROOM_D / 2 - 0.4);
+// Punkt auf der Straße vor der Tür (lokal, auf Straßenhöhe): hier kommen neue Figuren an und gehen beim Verlassen hin
+export const STREET = new THREE.Vector3(0, -0.45, ROOM_D / 2 + 3.2);
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.02, ...extra });
 const M = {
@@ -267,6 +269,12 @@ export class Room {
     door.rotation.x = -Math.PI / 2;
     door.position.set(0, 0.005, hd - 0.25);
     g.add(door);
+    // Türrahmen an der Vorderseite und eine Stufe hinunter zur Straße
+    for (const sx of [-0.75, 0.75]) g.add(box(0.12, 2.2, 0.12, M.wallTop, sx, 0, hd + 0.2));
+    g.add(box(1.62, 0.12, 0.12, M.wallTop, 0, 2.2, hd + 0.2));
+    const step = box(1.8, 0.45, 0.6, M.floorEdge, 0, -0.45, hd + 0.55);
+    step.castShadow = false;
+    g.add(step);
 
     // Hindernisse für einfache Wegplanung (Kreis, lokal)
     this.obstacles = [

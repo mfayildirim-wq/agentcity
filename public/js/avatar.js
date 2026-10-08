@@ -379,10 +379,11 @@ export class Avatar {
 
   setFacing(angle) { this.targetFacing = angle; }
 
-  leave(door) {
+  // Verlassen: Wegpunkte (z. B. Tür, dann Straße) ablaufen, danach ausblenden
+  leave(points) {
     if (this.leaving) return;
     this.leaving = true;
-    this.walkTo([door]);
+    this.walkTo(Array.isArray(points) ? points : [points]);
   }
 
   setOpacity(v) {
