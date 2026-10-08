@@ -1,5 +1,5 @@
 {
-  "name": "agent-arena",
+  "name": "agentcity",
   "version": "0.2.0",
   "private": true,
   "description": "3D-Arbeitsumgebung für KI-Coding-Agenten im Browser (ACP, Chat, Terminal, Besprechungen, Verlauf)",

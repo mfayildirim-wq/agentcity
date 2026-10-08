@@ -1,4 +1,4 @@
-# Agent Arena
+# Agent City
 
 3D-Arbeitsumgebung für KI-Coding-Agenten im Browser. Jede Session ist eine Figur, jeder Subagent eine eigene
 Figur, jedes Projekt ein eigener Raum. Agenten verschiedener Tools (Claude Code, Codex, OpenCode, Hermes, Gemini
@@ -57,7 +57,7 @@ Befehl, Argumente, Umgebungsvariablen (`KEY=VAL` je Zeile), Farbe und Figurensti
 sendet `initialize` und zeigt Agent-Info bzw. Fehler. Vorinstalliert sind Claude Code
 (`@agentclientprotocol/claude-agent-acp`), Codex (`@zed-industries/codex-acp`), OpenCode (`opencode acp`), Hermes
 (`hermes acp`) und Gemini (`gemini --experimental-acp`). Eigene Einträge und Änderungen landen in
-`~/.agent-arena/agents.json`, zum Beispiel:
+`~/.agentcity/agents.json`, zum Beispiel:
 
 ```json
 [{ "id": "mein-agent", "name": "Mein Agent", "command": "mein-agent", "args": ["acp"], "env": {},
@@ -122,7 +122,7 @@ erscheinen schreibgeschützt im Reiter „Terminalausgaben“ der Detailkarte.
 
 ## Datenablage
 
-Alles liegt in `~/.agent-arena/` (Ordner Modus 0700):
+Alles liegt in `~/.agentcity/` (Ordner Modus 0700):
 
 | Datei         | Inhalt                                                                         |
 |---------------|--------------------------------------------------------------------------------|
@@ -169,7 +169,7 @@ server/
   index.js          Start: Konfig, DB, Registry, Watcher, HTTP + WebSocket
   config.js         Pfade, Port, Token
   core/             Modell, Ereignisbus, Zustand, Besprechungen, Aufgaben
-  agents/           Tool-Registry (Standard + ~/.agent-arena/agents.json)
+  agents/           Tool-Registry (Standard + ~/.agentcity/agents.json)
   acp/              ACP-Client, Session-Zustandsmaschine, Manager (Start, Übernehmen, Fortsetzen)
   pty/              Terminals (node-pty)
   watchers/         externe Sessions: Claude Code, Codex, OpenCode, Hermes
@@ -185,7 +185,7 @@ test/               node --test
 |-----------------------|----------------------------------|----------------------------------------|
 | `PORT`                | 4317                             | Port                                   |
 | `WINDOW_MIN`          | 90                               | beobachtete Sessions der letzten N min |
-| `ARENA_DATA_DIR`      | `~/.agent-arena`                 | Token, Tools, Datenbank                |
+| `ARENA_DATA_DIR`      | `~/.agentcity`                 | Token, Tools, Datenbank                |
 | `ARENA_OPEN`          | –                                | `1`: Login-Link beim Start öffnen (macOS) |
 | `ARENA_DB`            | `<ARENA_DATA_DIR>/arena.db`      | SQLite-Datei                           |
 | `ARENA_RETENTION_DAYS`| `90`                             | Aufbewahrung von Ereignissen/Berechtigungen in Tagen (Nachrichten, Sessions: doppelt so lang) |

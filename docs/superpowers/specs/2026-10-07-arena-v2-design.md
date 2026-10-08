@@ -1,4 +1,4 @@
-# Agent Arena v2 – Entwurf
+# Agent City v2 – Entwurf
 
 Stand: 07.10.2026 · Status: umgesetzt (07.10.2026, v0.2.0)
 
@@ -51,7 +51,7 @@ Alle Quellen (ACP, Watcher, Demo) erzeugen dieselben Objekte:
 
 ### Server-Module
 
-- **agents/registry.js** – liest `config/agents.json` (vorinstalliert) und `~/.agent-arena/agents.json` (Nutzer).
+- **agents/registry.js** – liest `config/agents.json` (vorinstalliert) und `~/.agentcity/agents.json` (Nutzer).
   Eintrag: `{ id, name, command, args[], env, color, avatarStyle, acp: true, resumeArgs? }`.
   Vorinstalliert: Claude Code (`npx @agentclientprotocol/claude-agent-acp`), Codex (`npx @zed-industries/codex-acp`),
   OpenCode (`opencode acp`), Hermes (`hermes acp`), Gemini (`gemini --experimental-acp`).
@@ -72,7 +72,7 @@ Alle Quellen (ACP, Watcher, Demo) erzeugen dieselben Objekte:
   Client → Server: `session.create, session.prompt, session.cancel, session.adopt, permission.answer, pty.input,
   pty.resize, task.create|update|assign, meeting.create|message, settings.agents.save|test, history.sessions|events|resume`.
   Server → Client: `snapshot, agent.update, event, permission.request, pty.output, task.update, meeting.update,
-  error`. Verbindung erfordert das Token (steht in `~/.agent-arena/token`): Browser über das HttpOnly-Cookie
+  error`. Verbindung erfordert das Token (steht in `~/.agentcity/token`): Browser über das HttpOnly-Cookie
   `arena_token`, das die Startseite setzt (Origin muss Host und Port der Arena entsprechen); andere Clients per erster
   Nachricht `hello { token }`. Sonst Abbruch mit Code 4401.
 - **api/http.js** – statische Dateien, `/vendor/*`, `/api/health`. Verlauf (Zeitstrahl, Archiv) läuft über den WebSocket

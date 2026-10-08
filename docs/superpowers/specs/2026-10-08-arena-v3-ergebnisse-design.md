@@ -1,4 +1,4 @@
-# Agent Arena v0.3 – Ergebnisse, Leinwand, CLI-Stapel
+# Agent City v0.3 – Ergebnisse, Leinwand, CLI-Stapel
 
 Stand: 08.10.2026 · Status: vom Nutzer freigegeben · Basis: v0.2.0 (`master` f58bc70)
 

@@ -8,7 +8,7 @@ import { readTextFile, writeTextFile } from './fs.js';
 import { createTerminalHandlers } from './terminal.js';
 
 const STDERR_LINES = 200;
-const CLIENT_INFO = { name: 'agent-arena', title: 'Agent Arena', version: '0.2.0' };
+const CLIENT_INFO = { name: 'agentcity', title: 'Agent City', version: '0.2.0' };
 
 // JSON-RPC-Fehler lesbar machen: „Internal error“ trägt die eigentliche Ursache oft in data.message
 // (bei Codex als JSON-Text { error: { message } })

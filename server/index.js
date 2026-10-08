@@ -1,4 +1,4 @@
-// Agent Arena v2 (gestartet über start.js) – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
+// Agent City v2 (gestartet über start.js) – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
 import { loadConfig, acquireLock, lockMessage, secureDbFiles } from './config.js';
 import { openDb } from './db/migrate.js';
 import { startRetention } from './db/retention.js';
@@ -39,7 +39,7 @@ secureDbFiles(config.dbPath);
 // Aufräumregel: beim Start und danach täglich (ARENA_RETENTION_DAYS)
 const retention = startRetention(db, { days: config.retentionDays });
 const repo = createRepo(db);
-// Tool-Registry: Standardliste + ~/.agent-arena/agents.json
+// Tool-Registry: Standardliste + ~/.agentcity/agents.json
 const registry = createRegistry({ dataDir: config.dataDir, arenaDir: config.arenaDir });
 const bus = createBus();
 const state = createState({ bus });
@@ -65,7 +65,7 @@ const ws = attachWs({
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n  Port ${config.port} ist schon belegt – läuft Agent Arena bereits? Dann den Link aus dessen Terminal öffnen.`);
+    console.error(`\n  Port ${config.port} ist schon belegt – läuft Agent City bereits? Dann den Link aus dessen Terminal öffnen.`);
     console.error(`  Beenden:  kill $(lsof -ti tcp:${config.port})   ·   Anderer Port:  PORT=4318 npm start\n`);
     lock.release();
     process.exit(1);
@@ -81,7 +81,7 @@ server.listen(config.port, config.host, () => {
   try { repo.endDangling(state.all().map((a) => a.sessionId)); } catch (err) { console.error('[db] endDangling', err.message); }
   const n = state.all().length;
   const url = loginUrl(config.host, server.address().port, config.token);
-  console.log(`\n  Agent Arena läuft – im Browser öffnen:  ${url}`);
+  console.log(`\n  Agent City läuft – im Browser öffnen:  ${url}`);
   console.log(`  Quelle: ${config.claudeProjectsDir}  ·  ${n} Agent(en) im Zeitfenster von ${config.windowMin} min`);
   console.log(`  Daten:  ${config.dataDir}\n`);
   if (process.env.ARENA_OPEN === '1' && process.platform === 'darwin') {
@@ -94,7 +94,7 @@ let stopping = false;
 async function shutdown(signal) {
   if (stopping) return;
   stopping = true;
-  console.log(`\n  ${signal} – Agent Arena wird beendet …`);
+  console.log(`\n  ${signal} – Agent City wird beendet …`);
   watchers.stop();
   await Promise.race([acp.stopAll(), new Promise((r) => setTimeout(r, 2500))]);
   await pty.closeAll({ graceMs: 1000 });

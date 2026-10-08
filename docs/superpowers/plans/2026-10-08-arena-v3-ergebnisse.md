@@ -1,4 +1,4 @@
-# Agent Arena v0.3 – Umsetzungsplan „Ergebnisse, Leinwand, CLI-Stapel“
+# Agent City v0.3 – Umsetzungsplan „Ergebnisse, Leinwand, CLI-Stapel“
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -51,7 +51,7 @@ Artefakt-Objekt wie in der Spec (`id, sessionId, agentId, t, updatedAt, kind, ti
 **Files:** Create `public/js/ui/results.js`; Modify `public/js/store.js` (`artifacts: Map<sessionId, Artifact[]>`, apply add/update/list, `unseenCount(sessionId)`), `public/js/main.js`, `public/js/ui/chat.js` (Frame rechts an der Chat-Leiste einhängen, Umschalt-Icon „Ergebnisse“ mit Zähler), `public/js/ui/common.js` (kleiner Markdown-Renderer: Überschriften, Listen, Code, Links – nach `esc`), `public/css/panels.css`, `public/js/demo.js` (Beispiel-Artefakte: eine HTML-Seite als Data-URL-iframe, eine Markdown-Karte, eine PDF-Hinweiskarte).
 - [ ] Frame laut Spec (Liste, Vorschau je kind, Knöpfe Öffnen/Link kopieren/Neuer Tab/Neu laden, einklappbar, `localStorage`-Zustand, auto-wählt neuestes).
 - [ ] iframe-Regeln: Dateien `sandbox="allow-scripts allow-forms"`, externe/localhost `sandbox="allow-scripts allow-forms allow-same-origin"`; `onerror`/Timeout 4 s ohne `load` → Karte „im neuen Tab öffnen“.
-- [ ] Browser-Prüfung (Port 4318, Claude-Session im Ordner agent-arena): Prompt „Lege `docs/demo.html` mit einer kleinen Seite und `docs/demo.md` mit drei Zeilen an“ → zwei Artefakte erscheinen, HTML als Vorschau, MD gerendert, „Öffnen“ zeigt die Datei im Finder. Danach die Testdateien löschen (Prompt an den Agenten oder manuell) und Session schließen.
+- [ ] Browser-Prüfung (Port 4318, Claude-Session im Ordner agentcity): Prompt „Lege `docs/demo.html` mit einer kleinen Seite und `docs/demo.md` mit drei Zeilen an“ → zwei Artefakte erscheinen, HTML als Vorschau, MD gerendert, „Öffnen“ zeigt die Datei im Finder. Danach die Testdateien löschen (Prompt an den Agenten oder manuell) und Session schließen.
 - [ ] Commit `feat(web): Ergebnis-Frame`.
 
 ---

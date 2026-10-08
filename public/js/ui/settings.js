@@ -199,7 +199,7 @@ export class SettingsPanel {
         <div class="st-row st-th" role="row"><span></span><span>Name</span><span>Befehl</span><span title="installiert">inst.</span><span>aktiv</span><span></span></div>
         ${rows || `<div class="ns-none">${this.loading ? 'lädt …' : 'Keine Tools'}</div>`}
       </div>
-      <div class="st-foot">Eigene Einträge: <code>~/.agent-arena/agents.json</code> · Standard-Tools lassen sich ändern und deaktivieren</div>
+      <div class="st-foot">Eigene Einträge: <code>~/.agentcity/agents.json</code> · Standard-Tools lassen sich ändern und deaktivieren</div>
     </div>`;
   }
 

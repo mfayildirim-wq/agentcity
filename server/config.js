@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { retentionDays } from './db/retention.js';
 
 export const ARENA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const DATA_DIR = process.env.ARENA_DATA_DIR || path.join(os.homedir(), '.agent-arena');
+export const DATA_DIR = process.env.ARENA_DATA_DIR || path.join(os.homedir(), '.agentcity');
+const LEGACY_DATA_DIR = path.join(os.homedir(), '.agent-arena'); // Datenordner bis v0.2 (Projekt hieß Agent Arena)
 export const PORT = Number(process.env.PORT || 4317);
 export const HOST = '127.0.0.1';
 export const WINDOW_MIN = Number(process.env.WINDOW_MIN || 90);
@@ -21,6 +22,10 @@ export const RETENTION_DAYS = retentionDays();
 
 // Datenordner anlegen; Modus 0700 auch bei einem bereits vorhandenen Ordner
 export function ensureDataDir(dir = DATA_DIR) {
+  // einmalige Übernahme des alten Datenordners (Token, Tools, Datenbank)
+  if (dir === DATA_DIR && !process.env.ARENA_DATA_DIR && !fs.existsSync(dir) && fs.existsSync(LEGACY_DATA_DIR)) {
+    try { fs.renameSync(LEGACY_DATA_DIR, dir); } catch { /* dann frisch anlegen */ }
+  }
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try { fs.chmodSync(dir, 0o700); } catch { /* fremder Ordner – Rechte bleiben */ }
   return dir;
@@ -87,13 +92,13 @@ export function processCommand(pid) {
 }
 
 // sieht die Befehlszeile nach einem Arena-Server aus?
-export const isArenaCommand = (cmd) => !!cmd && /agent-arena|server\/(index|start)\.js/.test(cmd);
+export const isArenaCommand = (cmd) => !!cmd && /agentcity|agent-arena|server\/(index|start)\.js/.test(cmd);
 
 // Meldung bei belegter Sperrdatei (Zeilen ohne Einrückung)
 export function lockMessage(dir, pid, command = processCommand(pid)) {
   const file = path.join(dir, 'server.lock');
   const lines = isArenaCommand(command)
-    ? [`Agent Arena läuft bereits mit diesem Datenordner (${dir}, PID ${pid}).`]
+    ? [`Agent City läuft bereits mit diesem Datenordner (${dir}, PID ${pid}).`]
     : [`Die Sperrdatei ${file} verweist auf PID ${pid}, das ist aber offenbar kein Arena-Prozess${command ? ` (${command.slice(0, 80)})` : ''}.`];
   lines.push(`Anderer Datenordner:  ARENA_DATA_DIR=/pfad npm start`);
   lines.push(`Läuft sicher kein Server mehr:  rm ${file.replace(os.homedir(), '~')}`);

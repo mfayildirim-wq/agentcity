@@ -13,7 +13,7 @@ export function nodeVersionOk(version = process.versions.node, min = MIN_NODE) {
 const isMain = !!process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
 if (isMain) {
   if (!nodeVersionOk()) {
-    console.error(`\n  Agent Arena braucht Node.js ${MIN_NODE.join('.')} oder neuer (gefunden: ${process.versions.node}).`);
+    console.error(`\n  Agent City braucht Node.js ${MIN_NODE.join('.')} oder neuer (gefunden: ${process.versions.node}).`);
     console.error('  Bitte Node aktualisieren, z. B. mit nvm:  nvm install 22 && nvm use 22\n');
     process.exit(1);
   }

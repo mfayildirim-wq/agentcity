@@ -39,7 +39,7 @@ export const loginUrl = (host, port, token) => `http://${host}:${port}/?t=${toke
 
 // Seite für Aufrufe ohne gültiges Cookie – enthält bewusst kein Token
 const LOGIN_PAGE = `<!doctype html>
-<html lang="de"><head><meta charset="utf-8"><title>Agent Arena</title>
+<html lang="de"><head><meta charset="utf-8"><title>Agent City</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
 <style>
@@ -50,7 +50,7 @@ const LOGIN_PAGE = `<!doctype html>
   p { margin: 0; color: #8b929c; }
   code { font: 12px ui-monospace, Menlo, monospace; color: #c9ced6; }
 </style></head>
-<body><main><h1>Agent Arena</h1><p>Bitte den Link aus dem Terminal öffnen<br><code>http://127.0.0.1:…/?t=…</code></p></main></body></html>
+<body><main><h1>Agent City</h1><p>Bitte den Link aus dem Terminal öffnen<br><code>http://127.0.0.1:…/?t=…</code></p></main></body></html>
 `;
 
 export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'public'), routes = {} }) {
