@@ -385,6 +385,6 @@ Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { thi
 
 ### Task 3.2: Abschluss
 
-- [ ] `npm test` grün; `?demo` wie oben; Live-Zyklus: Haus A starten („mach eine kleine Webseite“), zweiten Agenten mit Beitritt zu Haus A starten → er meldet sich mit einem Satz; Liste zeigt ein Haus mit zwei Hauptagenten; Raumschild zeigt den Auftrag und darunter den Ordner.
-- [ ] README: Abschnitt „Häuser“ (3–5 Sätze: Haus = Auftrag, Beitritt, Kontext-Prompt, Tür).
-- [ ] Commit `docs: Häuser und Tür`.
+- [x] `npm test` grün; `?demo` wie oben; Live-Zyklus: Haus A starten („mach eine kleine Webseite“), zweiten Agenten mit Beitritt zu Haus A starten → er meldet sich mit einem Satz; Liste zeigt ein Haus mit zwei Hauptagenten; Raumschild zeigt den Auftrag und darunter den Ordner.
+- [x] README: Abschnitt „Häuser“ (3–5 Sätze: Haus = Auftrag, Beitritt, Kontext-Prompt, Tür).
+- [x] Commit `docs: Häuser und Tür`.
