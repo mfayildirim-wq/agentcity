@@ -43,7 +43,7 @@
 - Modify: `server/acp/session.js:154-160`
 - Test: `test/model.test.js`
 
-- [ ] **Step 1: Test schreiben** – in `test/model.test.js` anhängen:
+- [x] **Step 1: Test schreiben** – in `test/model.test.js` anhängen:
 
 ```js
 test('house: Standard ist die Session-Id, explizit überschreibbar', () => {
@@ -56,9 +56,9 @@ test('house: Standard ist die Session-Id, explizit überschreibbar', () => {
 });
 ```
 
-- [ ] **Step 2: Test laufen lassen** – `node --test test/model.test.js` → FAIL (`a.house` ist `undefined`).
+- [x] **Step 2: Test laufen lassen** – `node --test test/model.test.js` → FAIL (`a.house` ist `undefined`).
 
-- [ ] **Step 3: Implementieren** – in `createAgent` nach `project:` ergänzen:
+- [x] **Step 3: Implementieren** – in `createAgent` nach `project:` ergänzen:
 
 ```js
     project: p.project, cwd: p.cwd ?? null, title: p.title ?? null, description: p.description ?? null,
@@ -68,9 +68,9 @@ test('house: Standard ist die Session-Id, explizit überschreibbar', () => {
 
 In `server/acp/session.js` `createSub` (Zeile ~158): `parentId: id, project: main.project, house: main.house, cwd: main.cwd, …`.
 
-- [ ] **Step 4: Tests** – `node --test test/model.test.js` → PASS. `npm test` → grün.
+- [x] **Step 4: Tests** – `node --test test/model.test.js` → PASS. `npm test` → grün.
 
-- [ ] **Step 5: Commit** – `git commit -am "feat(model): Feld house je Agent"`.
+- [x] **Step 5: Commit** – `git commit -am "feat(model): Feld house je Agent"`.
 
 ### Task 1.2: Watcher – Subagenten erben das Haus
 
@@ -79,16 +79,16 @@ In `server/acp/session.js` `createSub` (Zeile ~158): `parentId: id, project: mai
 - Modify: `server/watchers/opencode.js:186`
 - Test: `test/watcher-claude.test.js`
 
-- [ ] **Step 1: Test** – in `test/watcher-claude.test.js` im bestehenden Test, der `main.project`/`sub.project === 'demo'` prüft (Zeile ~56), ergänzen:
+- [x] **Step 1: Test** – in `test/watcher-claude.test.js` im bestehenden Test, der `main.project`/`sub.project === 'demo'` prüft (Zeile ~56), ergänzen:
 
 ```js
   assert.equal(main.house, main.sessionId);
   assert.equal(sub.house, main.house);
 ```
 
-- [ ] **Step 2: Laufen lassen** – FAIL, falls `sub.house` abweicht (Sub hat dieselbe sessionId wie main → könnte zufällig PASS sein; dann trotzdem Schritt 3 umsetzen, damit es explizit ist).
+- [x] **Step 2: Laufen lassen** – FAIL, falls `sub.house` abweicht (Sub hat dieselbe sessionId wie main → könnte zufällig PASS sein; dann trotzdem Schritt 3 umsetzen, damit es explizit ist).
 
-- [ ] **Step 3: Implementieren** – claude.js:
+- [x] **Step 3: Implementieren** – claude.js:
 
 ```js
     const houseOf = new Map(out.filter((a) => a.kind === 'main').map((a) => [a.sessionId, a.house]));
@@ -97,7 +97,7 @@ In `server/acp/session.js` `createSub` (Zeile ~158): `parentId: id, project: mai
 
 opencode.js Zeile 186: beim Mapping der Subs zusätzlich `house: mains.get(a.parentId).house` (analog zu `project`).
 
-- [ ] **Step 4: Tests** – `npm test` → grün. **Step 5: Commit** – `feat(watch): Subagenten erben das Haus`.
+- [x] **Step 4: Tests** – `npm test` → grün. **Step 5: Commit** – `feat(watch): Subagenten erben das Haus`.
 
 ### Task 1.3: DB-Spalte `house_id`
 
@@ -105,7 +105,7 @@ opencode.js Zeile 186: beim Mapping der Subs zusätzlich `house: mains.get(a.par
 - Modify: `server/db/schema.sql:2-3`, `server/db/migrate.js`, `server/db/repo.js:41-56, 214`
 - Test: `test/db.test.js`
 
-- [ ] **Step 1: Test** – in `test/db.test.js`:
+- [x] **Step 1: Test** – in `test/db.test.js`:
 
 ```js
 test('Session speichert house_id und liefert houseId', () => {
@@ -119,11 +119,11 @@ test('Session speichert house_id und liefert houseId', () => {
 
 (`fresh()` = Helfer der Datei, der eine frische DB + Repo anlegt – falls er anders heißt, den vorhandenen verwenden.)
 
-- [ ] **Step 2: FAIL prüfen.**
+- [x] **Step 2: FAIL prüfen.**
 
-- [ ] **Step 3: Implementieren** – schema.sql: `house_id TEXT` an `sessions` anhängen. migrate.js: wie die vorhandenen Migrationen eine prüfende `ALTER TABLE sessions ADD COLUMN house_id TEXT` (über `PRAGMA table_info(sessions)` prüfen, ob die Spalte fehlt). repo.js `createSession`: `house_id` einfügen mit `s.houseId ?? s.id`; Mapping der Session-Zeile: `houseId: r.house_id ?? r.id`; `listSessions`/Archiv-Abfragen liefern dadurch `houseId` mit.
+- [x] **Step 3: Implementieren** – schema.sql: `house_id TEXT` an `sessions` anhängen. migrate.js: wie die vorhandenen Migrationen eine prüfende `ALTER TABLE sessions ADD COLUMN house_id TEXT` (über `PRAGMA table_info(sessions)` prüfen, ob die Spalte fehlt). repo.js `createSession`: `house_id` einfügen mit `s.houseId ?? s.id`; Mapping der Session-Zeile: `houseId: r.house_id ?? r.id`; `listSessions`/Archiv-Abfragen liefern dadurch `houseId` mit.
 
-- [ ] **Step 4: Tests** – `npm test` grün. **Step 5: Commit** – `feat(db): house_id je Session`.
+- [x] **Step 4: Tests** – `npm test` grün. **Step 5: Commit** – `feat(db): house_id je Session`.
 
 ### Task 1.4: Session mit `houseId` starten (Beitritt) + Kontext-Prompt
 
@@ -132,7 +132,7 @@ test('Session speichert house_id und liefert houseId', () => {
 - Modify: `server/api/handlers/session.js:7-13`
 - Test: `test/acp-session.test.js`, `test/ws-session.test.js`
 
-- [ ] **Step 1: Test (Manager)** – in `test/acp-session.test.js` nach dem Muster der vorhandenen `createSession`-Tests mit dem Fake-Agenten:
+- [x] **Step 1: Test (Manager)** – in `test/acp-session.test.js` nach dem Muster der vorhandenen `createSession`-Tests mit dem Fake-Agenten:
 
 ```js
 test('Beitritt: neue Session übernimmt Haus und Ordner und bekommt den Kontext als ersten Prompt', async () => {
@@ -150,9 +150,9 @@ test('Beitritt: neue Session übernimmt Haus und Ordner und bekommt den Kontext 
 
 (`waitFor` und `cwd` sind in der Datei vorhanden; `let b2;` davor deklarieren oder die Zeile vereinfachen.)
 
-- [ ] **Step 2: FAIL prüfen.**
+- [x] **Step 2: FAIL prüfen.**
 
-- [ ] **Step 3: Implementieren** – manager.js:
+- [x] **Step 3: Implementieren** – manager.js:
 
 ```js
   async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false, load = adopted, parentSessionId = null, house = null }) {
@@ -190,9 +190,9 @@ test('Beitritt: neue Session übernimmt Haus und Ordner und bekommt den Kontext 
 
 handlers/session.js: `houseId: typeof msg.houseId === 'string' && msg.houseId ? msg.houseId : null` an `createSession` geben.
 
-- [ ] **Step 4: Test (WS)** – in `test/ws-session.test.js`: `session.create` mit `houseId` einer laufenden Session → Antwort `agentId`, Snapshot/`agent.update` enthält `house` gleich dem der ersten Session.
+- [x] **Step 4: Test (WS)** – in `test/ws-session.test.js`: `session.create` mit `houseId` einer laufenden Session → Antwort `agentId`, Snapshot/`agent.update` enthält `house` gleich dem der ersten Session.
 
-- [ ] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(acp): Beitritt zu einem Haus mit Kontext-Prompt`.
+- [x] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(acp): Beitritt zu einem Haus mit Kontext-Prompt`.
 
 ---
 
@@ -204,7 +204,7 @@ handlers/session.js: `houseId: typeof msg.houseId === 'string' && msg.houseId ? 
 - Create: `public/js/houses.js`
 - Test: `test/houses.test.js`
 
-- [ ] **Step 1: Test**
+- [x] **Step 1: Test**
 
 ```js
 import test from 'node:test';
@@ -239,9 +239,9 @@ test('housesFor liefert Liste für den Dialog', () => {
 });
 ```
 
-- [ ] **Step 2: FAIL** (Modul fehlt).
+- [x] **Step 2: FAIL** (Modul fehlt).
 
-- [ ] **Step 3: Implementieren**
+- [x] **Step 3: Implementieren**
 
 ```js
 // Häuser: ein Haus ist ein Auftrag (Hauptagent + Subagenten); reine Funktionen, auch in Tests nutzbar
@@ -278,7 +278,7 @@ export function housesFor(agents) {
 }
 ```
 
-- [ ] **Step 4: PASS**, **Step 5: Commit** – `feat(web): Hausfunktionen`.
+- [x] **Step 4: PASS**, **Step 5: Commit** – `feat(web): Hausfunktionen`.
 
 ### Task 2.2: Räume nach Haus, Raumschild mit Untertitel
 
