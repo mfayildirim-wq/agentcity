@@ -1,6 +1,7 @@
-// Dialog „Neue Session“: Tool, Projektordner (mit Ordnerliste und zuletzt verwendeten), Modus, Titel.
+// Dialog „Neue Session“: Tool, Haus (neu oder Beitritt), Projektordner (mit Ordnerliste und zuletzt verwendeten), Modus, Titel.
 import { svgIcon } from '../config.js';
 import { ICON, esc, DIAMOND } from './common.js';
+import { housesFor } from '../houses.js';
 
 const LAST_KEY = 'agentcity.newSession';
 const load = () => { try { return JSON.parse(localStorage.getItem(LAST_KEY) || '{}'); } catch { return {}; } };
@@ -17,6 +18,7 @@ export class NewSessionDialog {
     this.toolId = last.toolId ?? null;
     this.mode = last.mode ?? 'confirm';
     this.cwd = last.cwd ?? '';
+    this.houseId = null; // null = neues Haus; sonst Beitritt zu diesem Haus
     this.listing = null;
     this.busy = false;
 
@@ -27,6 +29,8 @@ export class NewSessionDialog {
         if (tool.getAttribute('aria-disabled') === 'true') { this.toast(`${tool.title}`, 'warn'); return; }
         this.toolId = tool.dataset.tool; this.drawTools(); return;
       }
+      const house = e.target.closest('[data-house]');
+      if (house) { this.houseId = house.dataset.house || null; this.drawHouses(); return; }
       const mode = e.target.closest('[data-mode]');
       if (mode) { this.mode = mode.dataset.mode; this.drawMode(); return; }
       const dir = e.target.closest('[data-dir]');
@@ -48,6 +52,7 @@ export class NewSessionDialog {
     const tools = this.store.state.tools;
     const usable = (t) => t && t.installed !== false;
     if (!usable(tools.find((t) => t.id === this.toolId))) this.toolId = tools.find(usable)?.id ?? null;
+    this.houseId = null; // Standard: neues Haus
     this.returnFocus = document.activeElement;
     this.el.classList.remove('hidden');
     this.build();
@@ -88,16 +93,18 @@ export class NewSessionDialog {
 
   async submit() {
     if (this.busy) return;
-    const cwd = this.el.querySelector('.ns-path')?.value.trim() || this.cwd;
+    const house = this.houses?.find((h) => h.id === this.houseId) ?? null;
+    // Beitritt: der Ordner ist der des Hauses (Server übernimmt ihn ohnehin)
+    const cwd = house ? house.cwd : (this.el.querySelector('.ns-path')?.value.trim() || this.cwd);
     const title = this.el.querySelector('.ns-title')?.value.trim() || null;
     if (!this.toolId) { this.toast('Kein Tool verfügbar', 'warn'); return; }
-    if (!cwd) { this.toast('Bitte einen Projektordner wählen', 'warn'); return; }
+    if (!cwd && !house) { this.toast('Bitte einen Projektordner wählen', 'warn'); return; }
     this.busy = true;
     this.drawButton();
     try {
-      const res = await this.request('session.create', { toolId: this.toolId, cwd, mode: this.mode, title }, 90_000);
-      save({ toolId: this.toolId, mode: this.mode, cwd });
-      this.cwd = cwd;
+      const res = await this.request('session.create', { toolId: this.toolId, cwd, mode: this.mode, title, houseId: house ? house.id : null }, 90_000);
+      save({ toolId: this.toolId, mode: this.mode, cwd: house ? this.cwd : cwd });
+      if (!house) this.cwd = cwd;
       this.close();
       this.onCreated(res.agentId);
     } catch (err) {
@@ -114,7 +121,9 @@ export class NewSessionDialog {
       <div class="ns-head"><span id="ns-title">${svgIcon(ICON.plus)}Neue Session</span><button class="icon-btn sm" data-close title="Schließen (Esc)" aria-label="Schließen">${svgIcon(ICON.close)}</button></div>
       <div class="ns-label">Tool</div>
       <div class="ns-tools" role="radiogroup" aria-label="Tool"></div>
-      <div class="ns-label">Projektordner</div>
+      <div class="ns-label">Haus</div>
+      <div class="ns-houses" role="radiogroup" aria-label="Haus"></div>
+      <div class="ns-label ns-dirlabel">Projektordner</div>
       <div class="ns-pathrow">
         <button class="icon-btn sm ns-up" data-dir="" title="Übergeordneter Ordner" aria-label="Übergeordneter Ordner">${svgIcon(ICON.up)}</button>
         <input class="ns-path" value="${esc(this.cwd)}" spellcheck="false" placeholder="/Pfad/zum/Projekt" aria-label="Projektordner" />
@@ -130,6 +139,7 @@ export class NewSessionDialog {
       <div class="ns-foot"><button class="btn primary" data-start></button></div>
     </div>`;
     this.drawTools();
+    this.drawHouses();
     this.drawDirs();
     this.drawMode();
     this.drawButton();
@@ -147,6 +157,21 @@ export class NewSessionDialog {
         <span class="av sm" style="--c:${esc(t.color || '#8a94a6')}">${DIAMOND}</span><span>${esc(t.name)}</span>${off ? '<em>fehlt</em>' : ''}</button>`;
     }).join('')
       : '<span class="ns-none">Keine Tools konfiguriert</span>';
+    this.drawButton();
+  }
+
+  // Häuser mit laufendem Hauptagenten: „Neues Haus“ oder Beitritt (Ordner kommt dann vom Haus)
+  drawHouses() {
+    const box = this.el.querySelector('.ns-houses');
+    if (!box) return;
+    const houses = housesFor(this.store.agentList().filter((a) => a.source !== 'demo' && !a.replay));
+    this.houses = houses;
+    if (this.houseId && !houses.some((h) => h.id === this.houseId)) this.houseId = null; // Haus inzwischen weg
+    const item = (id, name, sub, title, on) => `<button class="ns-house ${on ? 'on' : ''}" data-house="${esc(id)}" role="radio" aria-checked="${on}" title="${esc(title)}">${svgIcon(id ? ICON.home : ICON.plus)}<span>${esc(name)}</span>${sub ? `<em>${esc(sub)}</em>` : ''}</button>`;
+    box.innerHTML = item('', 'Neues Haus', '', 'eigener Auftrag – Ordner unten wählen', !this.houseId)
+      + houses.map((h) => item(h.id, h.name, h.project !== h.name ? h.project : '', `${h.cwd ?? ''} · ${h.count} Agent${h.count === 1 ? '' : 'en'}`, h.id === this.houseId)).join('');
+    const join = !!this.houseId;
+    for (const sel of ['.ns-dirlabel', '.ns-pathrow', '.ns-dirs']) this.el.querySelector(sel)?.classList.toggle('hidden', join);
     this.drawButton();
   }
 
@@ -177,6 +202,6 @@ export class NewSessionDialog {
     const b = this.el.querySelector('[data-start]');
     if (!b) return;
     b.disabled = this.busy || !this.toolId;
-    b.innerHTML = this.busy ? '<span class="spin"></span>startet …' : `${svgIcon(ICON.send)}Starten`;
+    b.innerHTML = this.busy ? '<span class="spin"></span>startet …' : `${svgIcon(ICON.send)}${this.houseId ? 'Beitreten' : 'Starten'}`;
   }
 }

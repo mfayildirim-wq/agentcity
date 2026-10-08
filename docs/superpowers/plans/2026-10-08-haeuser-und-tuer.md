@@ -312,7 +312,7 @@ export function housesFor(agents) {
 - Modify: `public/js/ui/newsession.js`
 - Modify: `public/css/panels.css` (Abschnitt `.ns-…`)
 
-- [ ] **Step 1: Zustand** – `this.houseId = null` (null = neues Haus). Im `build()` nach dem Tool-Abschnitt:
+- [x] **Step 1: Zustand** – `this.houseId = null` (null = neues Haus). Im `build()` nach dem Tool-Abschnitt:
 
 ```html
       <div class="ns-label">Haus</div>
@@ -340,11 +340,11 @@ export function housesFor(agents) {
 
 Klick-Handler: `const house = e.target.closest('[data-house]'); if (house) { this.houseId = house.dataset.house || null; this.drawHouses(); return; }`. `submit()`: `houseId: this.houseId` mitsenden; bei Beitritt die cwd-Pflichtprüfung überspringen. Nach `onCreated` bleibt `houseId` gespeichert? Nein – beim nächsten `open()` auf `null` zurücksetzen (Standard: neues Haus). `ICON.home` in `ui/common.js` ergänzen, falls nicht vorhanden (Pfad: `M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z`).
 
-- [ ] **Step 2: CSS** – `.ns-houses { display:flex; flex-wrap:wrap; gap:6px; }`, `.ns-house` im Stil von `.ns-tool` (kompakt, `em` klein in `var(--tx-3)`), `.on` hervorgehoben; `.hidden { display:none }` existiert bereits.
+- [x] **Step 2: CSS** – `.ns-houses { display:flex; flex-wrap:wrap; gap:6px; }`, `.ns-house` im Stil von `.ns-tool` (kompakt, `em` klein in `var(--tx-3)`), `.on` hervorgehoben; `.hidden { display:none }` existiert bereits.
 
-- [ ] **Step 3: main.js** – `store.subscribe`: bei `changes.has('agents')` und `newSession.isOpen` → `newSession.drawHouses()`.
+- [x] **Step 3: main.js** – `store.subscribe`: bei `changes.has('agents')` und `newSession.isOpen` → `newSession.drawHouses()`.
 
-- [ ] **Step 4: Prüfen** – Dialog zeigt „Neues Haus“ + laufende Häuser; Beitritt blendet den Ordnerwähler aus. **Step 5: Commit** – `feat(web): Haus im Dialog wählen`.
+- [x] **Step 4: Prüfen** – Dialog zeigt „Neues Haus“ + laufende Häuser; Beitritt blendet den Ordnerwähler aus. **Step 5: Commit** – `feat(web): Haus im Dialog wählen`.
 
 ---
 
