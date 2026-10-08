@@ -55,6 +55,9 @@ test('Claude-Watcher liefert Haupt- und Subagent im neuen Modell', async () => {
   assert.equal(main.toolId, 'claude');
   assert.equal(main.project, 'demo');
   assert.equal(sub.project, 'demo');
+  // Haus: Hauptagent wohnt in seiner Session, der Subagent erbt es
+  assert.equal(main.house, main.sessionId);
+  assert.equal(sub.house, main.house);
   assert.equal(sub.category, 'library');
   assert.equal(main.events.length, 3);
   // stabile Ausgabe → zweiter Scan ändert nichts (ohne die zeitabhängigen Felder)

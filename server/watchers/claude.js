@@ -382,8 +382,13 @@ export function createClaudeWatcher({ root, windowMs = 90 * 60_000 }) {
     }
     // Subagenten wohnen im Raum ihrer Hauptsession und verschwinden mit ihr
     const projectOf = new Map(out.filter((a) => a.kind === 'main').map((a) => [a.sessionId, a.project]));
+    const houseOf = new Map(out.filter((a) => a.kind === 'main').map((a) => [a.sessionId, a.house]));
     const visible = out.filter((a) => a.kind === 'main' || mains.has(mainId(a.sessionId)));
-    for (const a of visible) if (a.kind === 'sub') a.project = projectOf.get(a.sessionId) || a.project;
+    for (const a of visible) {
+      if (a.kind !== 'sub') continue;
+      a.project = projectOf.get(a.sessionId) || a.project;
+      a.house = houseOf.get(a.sessionId) || a.house;
+    }
     visible.sort((x, y) => (x.kind === y.kind ? x.startedAt - y.startedAt : x.kind === 'main' ? -1 : 1));
     return visible;
   }

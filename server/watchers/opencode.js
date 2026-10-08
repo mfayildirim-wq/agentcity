@@ -182,8 +182,9 @@ export function createOpencodeWatcher({ dbPath, windowMs = 90 * 60_000 }) {
       if (!sub) mains.set(agent.id, agent);
       out.push(agent);
     }
-    // Subagenten nur mit sichtbarer Hauptsession, im Raum der Hauptsession
-    return out.filter((a) => a.kind === 'main' || mains.has(a.parentId)).map((a) => (a.kind === 'sub' ? { ...a, project: mains.get(a.parentId).project } : a));
+    // Subagenten nur mit sichtbarer Hauptsession, im Raum (Haus) der Hauptsession
+    return out.filter((a) => a.kind === 'main' || mains.has(a.parentId))
+      .map((a) => (a.kind === 'sub' ? { ...a, project: mains.get(a.parentId).project, house: mains.get(a.parentId).house } : a));
   }
 
   return { id: 'opencode', adoptable: false, dbPath, scan, agents, takeEvents, close };

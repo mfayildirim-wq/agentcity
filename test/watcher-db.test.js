@@ -58,6 +58,9 @@ test('OpenCode-Watcher: Session, laufendes Werkzeug, Subagent', async () => {
   assert.equal(sub.parentId, main.id);
   assert.equal(sub.status, 'done');
   assert.equal(sub.agentType, 'general');
+  // Haus: der Subagent hat eine eigene Session, wohnt aber im Haus des Hauptagenten
+  assert.equal(main.house, main.sessionId);
+  assert.equal(sub.house, main.house);
   assert.equal(w.takeEvents().length, 0, 'erster Scan meldet keine historischen Ereignisse');
   // keine Begleitdateien neben der fremden Datenbank
   assert.ok(!fs.existsSync(`${dbPath}-wal`) && !fs.existsSync(`${dbPath}-shm`));
