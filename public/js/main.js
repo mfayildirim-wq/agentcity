@@ -40,7 +40,10 @@ const dragInfo = (id) => {
   if (!a || a.source !== 'acp' || a.kind !== 'main' || !a.controllable || store.state.connection !== 'live') return null;
   return { name: agentName(a), color: agentColor(a) };
 };
-const world = new World($('stage'), $('labels'), { onSelect: select, onHover: () => {}, dragInfo, onDropMeeting: (id) => dropOnMeeting(id) });
+const world = new World($('stage'), $('labels'), {
+  onSelect: select, onHover: () => {}, dragInfo, onDropMeeting: (id) => dropOnMeeting(id), screens: $('screens'),
+  onOpenScreen: (sessionId) => openSessionResults(sessionId),
+});
 const list = new AgentList($('list'), {
   onSelect: select, onHover: hover,
   onAdopt: (id) => { const a = store.state.agents.get(id); return a && sessionAction('adopt', a); },
@@ -206,6 +209,26 @@ async function dropOnMeeting(agentId) {
   } catch { /* Hinweis kam als Toast */ }
 }
 
+// Klick auf eine Leinwand: Hauptagent der Session auswählen und den Ergebnis-Frame aufklappen
+function openSessionResults(sessionId) {
+  if (store.state.playback) return;
+  const a = store.agentList().find((x) => x.sessionId === sessionId && x.kind === 'main') ?? store.agentList().find((x) => x.sessionId === sessionId);
+  if (!a) return;
+  select(a.id);
+  if (a.controllable && a.kind === 'main') results.setCollapsed(false);
+}
+
+// Wiedergabe: Artefakte der Sessions im Zeitstrahl nachladen (einmal je Session), damit die Leinwände den Stand zum Zeitpunkt zeigen
+const artifactsLoaded = new Set();
+function loadPlaybackArtifacts() {
+  if (store.state.connection !== 'live') return;
+  for (const s of timeline.sessions ?? []) {
+    if (artifactsLoaded.has(s.id)) continue;
+    artifactsLoaded.add(s.id);
+    quiet('artifact.list', { sessionId: s.id }).then((res) => store.applyArtifactList(s.id, res.artifacts)).catch(() => artifactsLoaded.delete(s.id));
+  }
+}
+
 const liveOnly = () => {
   if (demo) { toast('Besprechungen und Aufgaben gibt es nur live', 'warn'); return false; }
   if (liveState !== 'live') { toast('Keine Verbindung zum Server', 'warn'); return false; }
@@ -252,7 +275,7 @@ async function sessionAction(kind, a) {
   } catch { /* Hinweis kam bereits als Toast */ }
 }
 
-if (params.has('debug')) window.__agentcity = { world, store, results };
+if (params.has('debug')) window.__agentcity = { world, store, results, timeline };
 
 // ---------------------------------------------------------------- Store → Oberfläche
 store.subscribe((s, changes) => {
@@ -272,6 +295,11 @@ store.subscribe((s, changes) => {
     emptyEl.classList.toggle('hidden', agents.length > 0);
   }
   if (changes.has('selected')) { world.select(s.selected); loadChatHistory(s.selected); }
+  // Leinwände: neuestes Artefakt je Raum (in der Wiedergabe der Stand zum Zeitpunkt)
+  if (changes.has('agents') || changes.has('artifacts') || changes.has('selected') || changes.has('playback') || meetingMoved) {
+    if (s.playback) loadPlaybackArtifacts();
+    world.syncScreens(store.artifactsUntil(s.playback?.t ?? null), agents, s.selected);
+  }
   if (changes.has('agents') || changes.has('selected') || changes.has('diffs') || changes.has('tools') || changes.has('terminals')) {
     list.render(agents, s.selected);
     detail.render(agents, s.selected, store.now);

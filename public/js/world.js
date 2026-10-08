@@ -2,22 +2,28 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
+import { CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Avatar } from './avatar.js';
 import { agentColor } from './config.js';
 import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR } from './room.js';
 import { Town } from './town.js';
+import { MAX_LIVE_SCREENS } from './screen.js';
+
+const SCREEN_BUDGET_MS = 500; // Abstand der Sichtbarkeitsprüfung der Leinwände
 
 // ---------------------------------------------------------------- Welt
 export class World {
   // dragInfo(key) → { name, color } für ziehbare Figuren (steuerbare Hauptagenten) oder null;
-  // onDropMeeting(key) – Figur auf ein Meeting-Pad fallen gelassen
-  constructor(container, labelContainer, { onSelect, onHover, dragInfo = null, onDropMeeting = null } = {}) {
+  // onDropMeeting(key) – Figur auf ein Meeting-Pad fallen gelassen; onOpenScreen(sessionId) – Klick auf eine Leinwand;
+  // screens: Container der CSS3D-Ebene (liegt unter dem Canvas, sichtbar durch den Ausschnitt der Leinwand)
+  constructor(container, labelContainer, { onSelect, onHover, dragInfo = null, onDropMeeting = null, onOpenScreen = null, screens = null } = {}) {
     this.container = container;
     this.onSelect = onSelect;
     this.onHover = onHover;
     this.dragInfo = dragInfo;
     this.onDropMeeting = onDropMeeting;
+    this.onOpenScreen = onOpenScreen;
     this.meetingIds = new Set(); // Teilnehmer offener Besprechungen: bleiben am Tisch
     this.drag = null;
     this.dragging = null; // { key, room } während des Ziehens
@@ -29,9 +35,11 @@ export class World {
     this.clock = new THREE.Clock();
     this.focus = null;
 
-    const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    // Canvas mit Alphakanal: Hintergrundfarbe kommt vom Dokument, die Leinwände scheinen durch ihren Ausschnitt
+    const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', alpha: true });
     r.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     r.setSize(container.clientWidth, container.clientHeight);
+    r.setClearColor(0x000000, 0);
     r.shadowMap.enabled = true;
     r.shadowMap.type = THREE.PCFSoftShadowMap;
     r.toneMapping = THREE.ACESFilmicToneMapping;
@@ -43,9 +51,12 @@ export class World {
     const lr = new CSS2DRenderer({ element: labelContainer });
     lr.setSize(container.clientWidth, container.clientHeight);
     this.labelRenderer = lr;
+    // zweite Ebene: Leinwände als echte DOM-Elemente (CSS3D), gleiche Kamera
+    this.screenRenderer = screens ? new CSS3DRenderer({ element: screens }) : null;
+    this.screenRenderer?.setSize(container.clientWidth, container.clientHeight);
+    this.screenBudgetAt = 0;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color('#161a21');
     scene.fog = new THREE.Fog('#161a21', 70, 150);
     const pmrem = new THREE.PMREMGenerator(r);
     scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -114,6 +125,7 @@ export class World {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
     this.labelRenderer.setSize(w, h);
+    this.screenRenderer?.setSize(w, h);
   }
 
   bindEvents() {
@@ -124,7 +136,11 @@ export class World {
     el.addEventListener('pointerup', (e) => {
       if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || this.dragDone) { this.dragDone = false; return; }
       const key = this.pick(e);
-      this.onSelect?.(key);
+      if (key) { this.onSelect?.(key); return; }
+      // Klick auf eine Leinwand mit Inhalt öffnet die Session des gezeigten Artefakts
+      const room = this.pickScreen(e);
+      if (room?.screen?.artifact && this.onOpenScreen) { this.onOpenScreen(room.screen.artifact.sessionId); return; }
+      this.onSelect?.(null);
     });
     // Drag & Drop einer Figur (Capture-Phase am Container: vor OrbitControls, die während des Ziehens ruhen)
     this.container.addEventListener('pointerdown', (e) => this.dragStart(e), true);
@@ -147,9 +163,9 @@ export class World {
         if (this.hoverKey && this.avatars.get(this.hoverKey)) this.avatars.get(this.hoverKey).hovered = false;
         this.hoverKey = key;
         if (key) this.avatars.get(key).hovered = true;
-        el.style.cursor = key ? 'pointer' : '';
         this.onHover?.(key);
       }
+      el.style.cursor = key || this.pickScreen(e)?.screen?.artifact ? 'pointer' : '';
     });
   }
 
@@ -230,6 +246,59 @@ export class World {
     const objs = [...this.avatars.values()].filter((a) => !a.leaving).map((a) => a.group);
     const hit = this.raycaster.intersectObjects(objs, true)[0];
     return hit?.object.userData.agentKey || null;
+  }
+
+  // Raum, dessen Leinwand unter dem Zeiger liegt
+  pickScreen(e) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const cuts = [...this.rooms.values()].map((r) => r.screenCut).filter(Boolean);
+    const hit = this.raycaster.intersectObjects(cuts, false)[0];
+    return hit ? [...this.rooms.values()].find((r) => r.screenCut === hit.object) ?? null : null;
+  }
+
+  // ---------------------------------------------------------------- Leinwände
+  // artifactsBySession: Map sessionId → Artefakte (neueste zuerst); Raum = Projekt der Session;
+  // ist ein Agent des Raums ausgewählt, zeigt die Leinwand dessen neuestes Artefakt
+  syncScreens(artifactsBySession, agents, selected = null) {
+    const roomOf = new Map(); // sessionId → Projekt
+    for (const a of agents) if (a.sessionId && (!roomOf.has(a.sessionId) || a.kind === 'main')) roomOf.set(a.sessionId, a.project);
+    const perRoom = new Map();
+    for (const [sid, list] of artifactsBySession ?? []) {
+      const project = roomOf.get(sid);
+      if (!project || !list?.length) continue;
+      if (!perRoom.has(project)) perRoom.set(project, []);
+      perRoom.get(project).push(...list);
+    }
+    const sel = selected ? agents.find((a) => a.id === selected) : null;
+    for (const [name, room] of this.rooms) {
+      if (!room.screen) continue;
+      const list = (perRoom.get(name) ?? []).sort((x, y) => (y.updatedAt ?? y.t ?? 0) - (x.updatedAt ?? x.t ?? 0));
+      let pick = list[0] ?? null;
+      if (sel && sel.project === name && sel.sessionId) pick = list.find((a) => a.sessionId === sel.sessionId) ?? pick;
+      room.screen.setArtifact(pick, list.length, list.filter((a) => !a.seen).length);
+    }
+    this.updateScreenBudget(true);
+  }
+
+  // Nur Leinwände im Bild zeigen, davon höchstens MAX_LIVE_SCREENS (nach Kameradistanz) mit iframe
+  updateScreenBudget(force = false) {
+    const now = performance.now();
+    if (!force && now - this.screenBudgetAt < SCREEN_BUDGET_MS) return;
+    this.screenBudgetAt = now;
+    if (!this.rooms.size) return;
+    const frustum = new THREE.Frustum().setFromProjectionMatrix(new THREE.Matrix4().multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse));
+    const pos = new THREE.Vector3();
+    const ranked = [];
+    for (const room of this.rooms.values()) {
+      if (!room.screen) continue;
+      room.screenWorldPosition(pos);
+      const visible = frustum.intersectsSphere(new THREE.Sphere(pos.clone(), 2.8));
+      ranked.push({ room, visible, dist: visible ? pos.distanceTo(this.camera.position) : Infinity });
+    }
+    ranked.sort((x, y) => x.dist - y.dist);
+    ranked.forEach((r, i) => r.room.screen.setMode(!r.visible ? 'off' : i < MAX_LIVE_SCREENS ? 'live' : 'card'));
   }
 
   // ---------------------------------------------------------------- Räume
@@ -546,6 +615,8 @@ export class World {
 
     this.controls.update();
     this.renderer.render(this.scene, this.camera);
+    this.screenRenderer?.render(this.scene, this.camera);
     this.labelRenderer.render(this.scene, this.camera);
+    this.updateScreenBudget();
   }
 }

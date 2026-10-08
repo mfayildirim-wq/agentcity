@@ -2,11 +2,14 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { STATIONS } from './config.js';
+import { Screen, SCREEN_W, SCREEN_H, SCREEN_SCALE } from './screen.js';
 
 export const ROOM_W = 16;
 export const ROOM_D = 12;
 export const ROOM_GAP = 5;
 export const DOOR = new THREE.Vector3(0, 0, ROOM_D / 2 - 0.4);
+export const WALL_H = 3.4; // hoch genug für die Leinwand (4,8 × 2,7, Mitte y = 1,9)
+export const SCREEN_POS = new THREE.Vector3(0.6, 1.9, -ROOM_D / 2 + 0.06); // Leinwand an der Rückwand
 
 const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.8, metalness: 0.02, ...extra });
 const M = {
@@ -174,16 +177,32 @@ export class Room {
     g.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts), M.tile));
 
     // Rück- und Seitenwand (Diorama)
-    g.add(box(ROOM_W + 0.5, 2.6, 0.25, M.wall, 0, 0, -hd - 0.125));
-    g.add(box(0.25, 2.6, ROOM_D + 0.25, M.wall, -hw - 0.125, 0, -0.125 + 0.125));
-    g.add(box(ROOM_W + 0.5, 0.08, 0.3, M.wallTop, 0, 2.6, -hd - 0.125));
-    g.add(box(0.3, 0.08, ROOM_D + 0.25, M.wallTop, -hw - 0.125, 2.6, 0));
-    // Fensterstreifen an der Rückwand
-    for (const wx of [-4.2, 4.2]) {
-      const win = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 1), new THREE.MeshStandardMaterial({ color: '#cfe3f5', emissive: '#9cc6ea', emissiveIntensity: 0.35, roughness: 0.2 }));
-      win.position.set(wx, 1.65, -hd + 0.005);
+    g.add(box(ROOM_W + 0.5, WALL_H, 0.25, M.wall, 0, 0, -hd - 0.125));
+    g.add(box(0.25, WALL_H, ROOM_D + 0.25, M.wall, -hw - 0.125, 0, -0.125 + 0.125));
+    g.add(box(ROOM_W + 0.5, 0.08, 0.3, M.wallTop, 0, WALL_H, -hd - 0.125));
+    g.add(box(0.3, 0.08, ROOM_D + 0.25, M.wallTop, -hw - 0.125, WALL_H, 0));
+    // Fensterstreifen an der Rückwand (links und rechts neben der Leinwand)
+    for (const wx of [-5.2, 5.4]) {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1), new THREE.MeshStandardMaterial({ color: '#cfe3f5', emissive: '#9cc6ea', emissiveIntensity: 0.35, roughness: 0.2 }));
+      win.position.set(wx, 1.9, -hd + 0.005);
       g.add(win);
     }
+
+    // Leinwand: Rahmen an der Wand, davor eine Fläche, die nur in den Tiefenpuffer schreibt (Ausschnitt im
+    // WebGL-Bild → darunter liegt die CSS3D-Ebene mit dem DOM der Leinwand; Figuren davor verdecken sie korrekt)
+    const sw = SCREEN_W * SCREEN_SCALE, sh = SCREEN_H * SCREEN_SCALE;
+    const bezel = box(sw + 0.16, sh + 0.16, 0.06, M.metal, SCREEN_POS.x, SCREEN_POS.y - (sh + 0.16) / 2, -hd + 0.0);
+    bezel.castShadow = false;
+    g.add(bezel);
+    const cut = new THREE.Mesh(new THREE.PlaneGeometry(sw, sh), new THREE.MeshBasicMaterial({ colorWrite: false }));
+    cut.position.copy(SCREEN_POS);
+    cut.renderOrder = -1; // vor der Wand zeichnen, damit sie dahinter nicht erscheint
+    cut.userData.screenCut = true;
+    g.add(cut);
+    this.screenCut = cut;
+    this.screen = new Screen();
+    this.screen.object.position.copy(SCREEN_POS);
+    g.add(this.screen.object);
 
     // Stationen ------------------------------------------------------------
     // Terminal (hinten links)
@@ -196,16 +215,12 @@ export class Room {
     g.add(term);
     this.addStation('terminal', -5, -4.4, 3.6, 3.0, [[-0.6, 0.75], [0.6, 0.75], [-1.7, 0.95], [1.7, 0.95]], Math.PI, [m1.userData.screen, m2.userData.screen]);
 
-    // Werkbank (hinten Mitte)
+    // Werkbank (hinten Mitte) – ohne Monitore, dahinter hängt die Leinwand
     const wb = new THREE.Group();
     wb.add(desk(3.6, 0.95, 0, 0));
-    const w1 = monitor(STATIONS.workbench.color, -1.05, -0.15);
-    const w2 = monitor(STATIONS.workbench.color, 0, -0.15);
-    const w3 = monitor(STATIONS.workbench.color, 1.05, -0.15);
-    wb.add(w1, w2, w3);
     wb.position.set(0.6, 0, -4.6);
     g.add(wb);
-    this.addStation('workbench', 0.6, -4.4, 4.6, 3.0, [[-1.05, 0.75], [0, 0.75], [1.05, 0.75], [-2.2, 0.95], [2.2, 0.95]], Math.PI, [w1.userData.screen, w2.userData.screen, w3.userData.screen]);
+    this.addStation('workbench', 0.6, -4.4, 4.6, 3.0, [[-1.05, 0.75], [0, 0.75], [1.05, 0.75], [-2.2, 0.95], [2.2, 0.95]], Math.PI);
 
     // Bibliothek (rechts hinten)
     g.add(bookshelf(4.75, -5.55, 1.9));
@@ -328,8 +343,14 @@ export class Room {
     for (const fn of this.animated) fn(t, this.stations.portal.activity);
   }
 
+  // Weltposition der Leinwand (für Abstand/Sichtbarkeit)
+  screenWorldPosition(target = new THREE.Vector3()) {
+    return target.copy(SCREEN_POS).add(this.group.position);
+  }
+
   dispose() {
     this.labelEl.remove();
+    this.screen.dispose();
     this.group.removeFromParent();
   }
 }
