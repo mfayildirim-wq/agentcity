@@ -240,6 +240,28 @@ test('adopt: Watcher-Agent wird durch steuerbaren ersetzt (loadSession)', async 
   await assert.rejects(() => manager.adopt(id), /externe/);
 });
 
+test('Beitritt: neue Session übernimmt Haus und Ordner und bekommt den Kontext als ersten Prompt', async () => {
+  const first = await manager.createSession({ toolId: 'fake', cwd, mode: 'auto', title: 'Webseite bauen' });
+  await manager.prompt(first, 'mach eine Webseite');
+  await waitFor(() => state.get(first).status === 'waiting_user');
+  const house = state.get(first).house;
+  assert.equal(house, state.get(first).sessionId, 'Standard: eigenes Haus');
+  const second = await manager.createSession({ toolId: 'fake', cwd: os.tmpdir(), mode: 'auto', houseId: house });
+  const b = state.get(second);
+  assert.equal(b.house, house);
+  assert.equal(b.cwd, cwd, 'Ordner des Hauses, nicht der übergebene');
+  assert.equal(repo.getSession(b.sessionId).house_id, house);
+  await waitFor(() => state.get(second).lastPrompt != null);
+  assert.match(state.get(second).lastPrompt, /Webseite bauen|mach eine Webseite/);
+  await waitFor(() => state.get(second).status === 'waiting_user');
+  // Subagent im Beitrittshaus erbt das Haus des Hauptagenten
+  const done = manager.prompt(second, 'subagent bitte');
+  const sub = await waitFor(() => state.all().find((a) => a.kind === 'sub' && a.parentId === second));
+  assert.equal(sub.house, house);
+  await done;
+  await assert.rejects(() => manager.createSession({ toolId: 'fake', cwd, houseId: 'gibt-es-nicht' }), /Haus nicht gefunden/);
+});
+
 test('Hilfsfunktionen: Subagent-Erkennung und Details', () => {
   assert.equal(isSubagentCall({ title: 'Task: x' }), true);
   assert.equal(isSubagentCall({ title: 'y', _meta: { claudeCode: { toolName: 'Agent' } } }), true);

@@ -42,16 +42,19 @@ export function createSessionManager({
 
   // Gemeinsamer Start: Agent anlegen, Prozess starten, initialize; danach new/load durch `open`
   // adopted: bestehende DB-Session wird übernommen (gehört Agent City erst nach erfolgreichem Laden);
-  // load: open lädt eine Session (Zeitlimit-Text); parentSessionId: Verweis beim Fortsetzen
-  async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false, load = adopted, parentSessionId = null }) {
+  // load: open lädt eine Session (Zeitlimit-Text); parentSessionId: Verweis beim Fortsetzen;
+  // house: Haus (Auftrag), dem der Agent beitritt – Standard ist die eigene Session
+  async function launch({
+    tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false, load = adopted, parentSessionId = null, house = null,
+  }) {
     const id = `a:${randomUUID()}`;
     const project = path.basename(cwd);
     const projectId = repo?.upsertProject?.({ cwd, name: project }) ?? null;
     try {
-      repo?.createSession?.({ id: sessionId, toolId: tool.id, acpSessionId, projectId, title, source: 'acp', mode, parentSessionId });
+      repo?.createSession?.({ id: sessionId, toolId: tool.id, acpSessionId, projectId, title, source: 'acp', mode, parentSessionId, houseId: house ?? sessionId });
     } catch { /* Session-Zeile existiert schon (Übernahme) */ }
     const agent = createAgent({
-      id, toolId: tool.id, sessionId, acpSessionId, project, cwd, title: title || null, source: 'acp', controllable: true,
+      id, toolId: tool.id, sessionId, acpSessionId, project, cwd, title: title || null, house: house ?? sessionId, source: 'acp', controllable: true,
       status: 'thinking', mode: null,
     });
     agent.cityMode = mode === 'auto' ? 'auto' : 'confirm';
@@ -107,14 +110,32 @@ export function createSessionManager({
     }
   }
 
-  async function createSession({ toolId, cwd, mode = 'confirm', title = null }) {
+  // Kontext eines Hauses für einen beitretenden Agenten (ältester Hauptagent des Hauses)
+  function houseContext(houseId) {
+    const mains = state.all().filter((a) => a.kind === 'main' && a.house === houseId).sort((x, y) => (x.startedAt || 0) - (y.startedAt || 0));
+    const main = mains[0];
+    if (!main) throw new Error('Haus nicht gefunden');
+    if (!main.cwd) throw new Error('Projektordner des Hauses unbekannt');
+    const name = main.title || main.lastPrompt || main.project;
+    const lines = [`Du kommst als weiterer Agent in das Haus „${name}“ (Ordner ${main.cwd}).`];
+    if (main.lastPrompt) lines.push(`Auftrag des Hauses: „${main.lastPrompt}“`);
+    if (main.lastText) lines.push(`Letzter Stand von ${main.agentName ?? main.toolId}: „${main.lastText.slice(0, 600)}“`);
+    lines.push('Antworte mit einem Satz, womit du helfen kannst, und warte dann auf Anweisungen.');
+    return { cwd: main.cwd, text: lines.join('\n') };
+  }
+
+  // houseId: Beitritt zu einem bestehenden Haus – Ordner des Hauses, Kontext als erster Prompt
+  async function createSession({ toolId, cwd, mode = 'confirm', title = null, houseId = null }) {
     const tool = toolOf(toolId);
     if (mode && !MODES.includes(mode)) throw new Error(`Unbekannter City-Modus: ${mode}`);
-    const dir = checkDir(cwd);
-    return launch({
-      tool, cwd: dir, mode, title, sessionId: randomUUID(),
+    const ctx = houseId ? houseContext(houseId) : null;
+    const dir = checkDir(ctx?.cwd ?? cwd);
+    const id = await launch({
+      tool, cwd: dir, mode, title, sessionId: randomUUID(), house: houseId,
       open: (client) => client.newSession(),
     });
+    if (ctx) prompt(id, ctx.text).catch(() => { /* Agent meldet Fehler selbst (Status error, Toast) */ });
+    return id;
   }
 
   // Watcher-Agent (externe Session) durch steuerbaren ACP-Agenten ersetzen
@@ -142,7 +163,7 @@ export function createSessionManager({
       throw new Error('Session wird bereits in Agent City gesteuert');
     }
     const id = await launch({
-      tool, cwd: dir, mode: 'confirm', title: w.title, sessionId: w.sessionId, acpSessionId: external, adopted: true,
+      tool, cwd: dir, mode: 'confirm', title: w.title, sessionId: w.sessionId, acpSessionId: external, adopted: true, house: w.house,
       open: async (client, session, init) => {
         if (!init.agentCapabilities?.loadSession) throw new Error('Tool kann Sessions nicht laden');
         return session.load(() => client.loadSession(external));
@@ -206,7 +227,7 @@ export function createSessionManager({
     const dir = checkDir(s.cwd);
     const id = await launch({
       tool, cwd: dir, mode: s.mode === 'auto' ? 'auto' : 'confirm', title: s.title, sessionId: randomUUID(), acpSessionId: external,
-      load: true, parentSessionId: s.id,
+      load: true, parentSessionId: s.id, house: s.houseId ?? s.id, // fortgesetzte Session bleibt in ihrem Haus
       open: async (client, session, init) => {
         if (!init.agentCapabilities?.loadSession) throw new Error('Tool kann Sessions nicht laden');
         return session.load(() => client.loadSession(external));

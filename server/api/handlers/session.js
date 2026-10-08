@@ -5,9 +5,12 @@ const need = (ctx) => needIn(ctx.acp, 'Steuerung nicht verfügbar');
 
 export default {
   async 'session.create'(ctx, msg) {
+    // Beitritt zu einem bestehenden Haus: Ordner und Kontext kommen vom Haus, cwd ist dann optional
+    const houseId = typeof msg.houseId === 'string' && msg.houseId ? msg.houseId : null;
     const agentId = await need(ctx).createSession({
-      toolId: str(msg.toolId, 'toolId'), cwd: str(msg.cwd, 'cwd'), mode: msg.mode ?? 'confirm',
+      toolId: str(msg.toolId, 'toolId'), cwd: houseId ? msg.cwd ?? null : str(msg.cwd, 'cwd'), mode: msg.mode ?? 'confirm',
       title: typeof msg.title === 'string' && msg.title.trim() ? msg.title.trim().slice(0, 120) : null,
+      houseId,
     });
     return { agentId };
   },

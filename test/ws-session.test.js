@@ -167,6 +167,33 @@ test('Fehler: unbekanntes Tool, leerer Prompt', async () => {
   ws.close();
 });
 
+test('session.create mit houseId: Beitritt zu einem laufenden Haus', async () => {
+  const ws = open();
+  await ws.opened;
+  ws.send(JSON.stringify({ type: 'hello', token: TOKEN }));
+  await ws.next((m) => m.type === 'snapshot');
+  const { agentId } = await ws.request('session.create', { toolId: 'fake', cwd, mode: 'auto', title: 'Haus-Test' });
+  const first = await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.status === 'waiting_user');
+  assert.equal(first.agent.house, first.agent.sessionId);
+  // ohne cwd: der Ordner kommt vom Haus
+  const res = await ws.request('session.create', { toolId: 'fake', mode: 'auto', houseId: first.agent.house });
+  assert.match(res.agentId, /^a:/);
+  const second = await ws.next((m) => m.type === 'agent.update' && m.agent.id === res.agentId && m.agent.status === 'waiting_user');
+  assert.equal(second.agent.house, first.agent.house);
+  assert.equal(second.agent.cwd, cwd);
+  // neuer Client: Snapshot trägt das Haus
+  const ws2 = open();
+  await ws2.opened;
+  ws2.send(JSON.stringify({ type: 'hello', token: TOKEN }));
+  const snap = await ws2.next((m) => m.type === 'snapshot');
+  assert.deepEqual(snap.agents.filter((a) => a.house === first.agent.house).map((a) => a.id).sort(), [agentId, res.agentId].sort());
+  ws2.close();
+  await assert.rejects(() => ws.request('session.create', { toolId: 'fake', cwd, houseId: 'nope' }), /Haus nicht gefunden/);
+  await ws.request('session.close', { agentId: res.agentId });
+  await ws.request('session.close', { agentId });
+  ws.close();
+});
+
 test('fs.pickDir listet sichtbare Unterordner und zuletzt verwendete', async () => {
   const ws = open();
   await ws.opened;
