@@ -100,7 +100,7 @@ export function createPtyManager({ bus = null, shell = process.env.SHELL || '/bi
     return {
       ptyId: t.ptyId, agentId: t.agentId, ownerId: t.ownerId, kind: t.kind, command: t.command, args: t.args,
       cwd: t.cwd, t: t.t, exited: !!t.exitStatus, exitCode: t.exitStatus?.exitCode ?? null, signal: t.exitStatus?.signal ?? null,
-      released: t.released,
+      released: t.released, pid: t.proc?.pid ?? t.pid ?? null,
     };
   }
 

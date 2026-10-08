@@ -1,10 +1,12 @@
 // Aufräumregel für die Datenbank: beim Start und danach täglich alte Daten löschen, danach WAL kürzen und
 // freie Seiten zurückgeben. Frist (Tage) für Ereignisse und Berechtigungen = days, für Nachrichten,
-// Besprechungsbeiträge und Sessions/Agenten ohne Ereignisse = 2 × days; erledigte Aufgaben nach DONE_TASK_DAYS.
+// Besprechungsbeiträge und Sessions/Agenten ohne Ereignisse = 2 × days; erledigte Aufgaben nach DONE_TASK_DAYS;
+// Artefakte beendeter Sessions nach ARTIFACT_DAYS.
 export const DEFAULT_RETENTION_DAYS = 90;
 export const RETENTION_INTERVAL_MS = 24 * 3600_000;
 const DAY_MS = 24 * 3600_000;
 export const DONE_TASK_DAYS = 30;
+export const ARTIFACT_DAYS = 180;
 
 // Frist aus AGENTCITY_RETENTION_DAYS (positive Zahl), sonst 90
 export function retentionDays(env = process.env) {
@@ -33,6 +35,10 @@ export function runRetention(db, { days = DEFAULT_RETENTION_DAYS, now = Date.now
       OR (started_at < ? AND NOT EXISTS (SELECT 1 FROM events e WHERE e.agent_id = agents.id)
           AND (session_id IS NULL OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = agents.session_id)))`, long, long);
     out.sessions = run(`DELETE FROM sessions WHERE id IN (${oldSessions})`, long);
+    // Artefakte beendeter Sessions nach 180 Tagen, dazu Artefakte ohne Session-Zeile
+    out.artifacts = run(`DELETE FROM artifacts WHERE session_id IN
+      (SELECT id FROM sessions WHERE ended_at IS NOT NULL AND ended_at < ?)
+      OR NOT EXISTS (SELECT 1 FROM sessions s WHERE s.id = artifacts.session_id)`, now - ARTIFACT_DAYS * DAY_MS);
     db.exec('COMMIT');
   } catch (err) {
     db.exec('ROLLBACK');

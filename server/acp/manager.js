@@ -263,6 +263,17 @@ export function createSessionManager({
   const get = (agentId) => sessions.get(agentId)?.session ?? null;
   const has = (agentId) => sessions.has(agentId);
 
+  // PIDs der Session für den Port-Scan (artifacts.js): Agent-Prozess und laufende Terminals des Agenten
+  function processGroupPids(agentId) {
+    const e = sessions.get(agentId);
+    if (!e) return [];
+    const pids = [];
+    const main = e.client?.proc?.pid;
+    if (main) pids.push(main);
+    for (const t of pty?.listFor?.(agentId) ?? []) if (t.pid && !t.exited) pids.push(t.pid);
+    return [...new Set(pids)];
+  }
+
   // Server-Ende: laufende Sessions gelten als „ended“ (lassen sich im Archiv fortsetzen)
   async function stopAll() {
     // zuerst in der DB vermerken (das Beenden der Prozesse kann länger dauern als der Server wartet)
@@ -273,5 +284,5 @@ export function createSessionManager({
     await Promise.all([...sessions.keys()].map((id) => close(id, 'ended').catch(() => {})));
   }
 
-  return { createSession, adopt, resume, canLoad, close, prompt, cancel, setMode, setCityMode, answerPermission, get, has, stopAll, sessions };
+  return { createSession, adopt, resume, canLoad, close, prompt, cancel, setMode, setCityMode, answerPermission, get, has, processGroupPids, stopAll, sessions };
 }

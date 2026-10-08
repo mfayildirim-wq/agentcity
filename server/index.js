@@ -21,6 +21,7 @@ import taskHandlers from './api/handlers/task.js';
 import historyHandlers from './api/handlers/history.js';
 import { createMeetings } from './core/meetings.js';
 import { createTasks } from './core/tasks.js';
+import { createArtifacts } from './core/artifacts.js';
 import { createPtyManager } from './pty/manager.js';
 import { createRegistry } from './agents/registry.js';
 import { createSessionManager } from './acp/manager.js';
@@ -52,13 +53,15 @@ const meetings = createMeetings({ state, bus, repo, acp, registry });
 const tasks = createTasks({ state, bus, repo, acp, meetings });
 meetings.load();
 tasks.load();
+// Ergebnisse der Agenten (Dateien, URLs, Ports) erkennen und speichern
+const artifacts = createArtifacts({ bus, state, repo, acp, pty, config });
 const watchers = startWatchers({ state, bus, repo, config, autoStart: false });
 
 const server = createHttpServer({ config });
 const ws = attachWs({
   server,
   token: config.token,
-  ctx: { state, bus, repo, registry, acp, pty, config, meetings, tasks },
+  ctx: { state, bus, repo, registry, acp, pty, config, meetings, tasks, artifacts },
   handlers: createHandlers(sessionHandlers, permissionHandlers, fsHandlers, settingsHandlers, chatHandlers, ptyHandlers,
     meetingHandlers, taskHandlers, historyHandlers),
 });
@@ -102,6 +105,7 @@ async function shutdown(signal) {
   retention.stop();
   meetings.stop();
   tasks.stop();
+  artifacts.stop();
   ws.close();
   server.close();
   try { db.close(); } catch { /* bereits geschlossen */ }

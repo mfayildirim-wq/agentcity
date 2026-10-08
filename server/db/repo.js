@@ -209,6 +209,33 @@ export function createRepo(db) {
     },
   };
 
+  // ------------------------------------------------------------ Artefakte (v0.3)
+  const rowToArtifact = (r) => r && {
+    id: r.id, sessionId: r.session_id, agentId: r.agent_id, t: r.t, updatedAt: r.updated_at, kind: r.kind, title: r.title,
+    url: r.url, path: r.path, previewUrl: r.preview_url, source: r.source, seen: !!r.seen, ended: !!r.ended,
+    ...(r.size != null ? { size: r.size } : {}),
+  };
+  const artifacts = {
+    upsert(a) {
+      q(`INSERT INTO artifacts (id, session_id, agent_id, t, updated_at, kind, title, url, path, preview_url, source, seen, ended, size)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET agent_id = excluded.agent_id, updated_at = excluded.updated_at, kind = excluded.kind,
+           title = excluded.title, url = excluded.url, path = excluded.path, preview_url = excluded.preview_url, source = excluded.source,
+           seen = excluded.seen, ended = excluded.ended, size = excluded.size`)
+        .run(a.id, a.sessionId ?? null, a.agentId ?? null, a.t ?? Date.now(), a.updatedAt ?? a.t ?? Date.now(), a.kind, a.title ?? null,
+          a.url ?? null, a.path ?? null, a.previewUrl ?? null, a.source ?? null, a.seen ? 1 : 0, a.ended ? 1 : 0, a.size ?? null);
+    },
+    get: (id) => rowToArtifact(q('SELECT * FROM artifacts WHERE id = ?').get(id)),
+    // neueste zuerst
+    forSession: (sessionId, limit = 50) => q('SELECT * FROM artifacts WHERE session_id = ? ORDER BY updated_at DESC, rowid DESC LIMIT ?')
+      .all(sessionId, limit).map(rowToArtifact),
+    markSeen: (sessionId) => q('UPDATE artifacts SET seen = 1 WHERE session_id = ? AND seen = 0').run(sessionId).changes,
+    delete: (id) => q('DELETE FROM artifacts WHERE id = ?').run(id).changes > 0,
+    // Artefakte beendeter Sessions, die älter als `days` Tage sind
+    purge: (days, now = Date.now()) => q(`DELETE FROM artifacts WHERE session_id IN
+      (SELECT id FROM sessions WHERE ended_at IS NOT NULL AND ended_at < ?)`).run(now - days * 24 * 3600_000).changes,
+  };
+
   // ------------------------------------------------------------ Verlauf
   const rowToSession = (r) => ({
     id: r.id, toolId: r.tool_id, acpSessionId: r.acp_session_id, projectId: r.project_id, project: r.project_name,
@@ -259,5 +286,6 @@ export function createRepo(db) {
     db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, setSessionAcpId, setSessionMode, recentProjects,
     getSession, endSession, reopenSession, endDangling, citySessionFor, meta,
     upsertAgent, getAgent, insertEvents, insertMessage, messagesForAgent, insertPermission, resolvePermission, tasks, meetings, history,
+    artifacts,
   };
 }
