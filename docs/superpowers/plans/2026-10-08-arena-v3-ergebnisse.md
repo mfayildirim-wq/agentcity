@@ -35,24 +35,24 @@ Artefakt-Objekt wie in der Spec (`id, sessionId, agentId, t, updatedAt, kind, ti
 
 ### Task 1.1: Modell, Erkennung, DB
 **Files:** Create `server/core/artifacts.js`, `test/artifacts.test.js`; Modify `server/core/model.js` (createArtifact, KIND_BY_EXT), `server/db/schema.sql`, `server/db/migrate.js` (Tabelle + Index, idempotent), `server/db/repo.js` (`artifacts: upsert, forSession(sessionId, limit), markSeen(sessionId), purge(days)`), `server/db/retention.js` (Artefakte beendeter Sessions nach 180 Tagen), `server/core/bus.js` (`artifact.add`, `artifact.update` in BROADCAST_TYPES), `server/index.js` (Modul starten).
-- [ ] `createArtifacts({ bus, state, repo, acp, config })` abonniert: `event` mit `kind:'diff'` (→ Datei), `session.turnEnd` (→ URLs/Pfade im Text), `event` mit `kind:'terminal'` + `pty.output` (→ localhost-URLs; Puffer pro PTY, Regex auf Zeilen), Port-Scan alle 5 s für Sessions mit Status `tool|thinking` (Funktion `listListeningPorts(pids)` injizierbar; Standard über `lsof -nP -iTCP -sTCP:LISTEN -a -p <pids>`; PIDs aus `acp.processGroupPids(agentId)` – im Manager ergänzen: Haupt-PID + PTY-PIDs).
-- [ ] Dedup-Schlüssel: `sessionId + (path || url)`; Update setzt `updatedAt`, `seen=false`, Bus `artifact.update`; neu → `artifact.add`. Ausschlüsse und Limit 50 laut Spec. `previewUrl` nur für Pfade unter `cwd` (Realpath) und kind ≠ file.
-- [ ] Tests: Diff → text-Artefakt mit previewUrl; zweiter Diff gleicher Pfad → update statt add; Text mit `http://localhost:3000` → web; Text mit `` `docs/out.md` `` (existiert in Temp-cwd) → text; `node_modules/x.js` ignoriert; URL ohne Ergebnis-Wort und nicht localhost ignoriert; Port-Scan mit gefälschter Funktion → web `http://localhost:5173`; Limit 50; Persistenz (`repo.artifacts.forSession`).
-- [ ] Commit `feat(artifacts): Erkennung und Speicherung`.
+- [x] `createArtifacts({ bus, state, repo, acp, config })` abonniert: `event` mit `kind:'diff'` (→ Datei), `session.turnEnd` (→ URLs/Pfade im Text), `event` mit `kind:'terminal'` + `pty.output` (→ localhost-URLs; Puffer pro PTY, Regex auf Zeilen), Port-Scan alle 5 s für Sessions mit Status `tool|thinking` (Funktion `listListeningPorts(pids)` injizierbar; Standard über `lsof -nP -iTCP -sTCP:LISTEN -a -p <pids>`; PIDs aus `acp.processGroupPids(agentId)` – im Manager ergänzen: Haupt-PID + PTY-PIDs).
+- [x] Dedup-Schlüssel: `sessionId + (path || url)`; Update setzt `updatedAt`, `seen=false`, Bus `artifact.update`; neu → `artifact.add`. Ausschlüsse und Limit 50 laut Spec. `previewUrl` nur für Pfade unter `cwd` (Realpath) und kind ≠ file.
+- [x] Tests: Diff → text-Artefakt mit previewUrl; zweiter Diff gleicher Pfad → update statt add; Text mit `http://localhost:3000` → web; Text mit `` `docs/out.md` `` (existiert in Temp-cwd) → text; `node_modules/x.js` ignoriert; URL ohne Ergebnis-Wort und nicht localhost ignoriert; Port-Scan mit gefälschter Funktion → web `http://localhost:5173`; Limit 50; Persistenz (`repo.artifacts.forSession`).
+- [x] Commit `feat(artifacts): Erkennung und Speicherung`.
 
 ### Task 1.2: Vorschau-Route und WS-Handler
 **Files:** Create `server/api/preview.js`, `server/api/handlers/artifact.js`, `test/preview.test.js`; Modify `server/api/http.js` (Route `/preview/`), `server/api/handlers/index.js`, `server/api/ws.js` (Snapshot `artifacts`, `artifact.open` in die Origin-Pflichtliste).
-- [ ] `/preview/<sessionId>/<relpfad>`: Cookie-Pflicht; `cwd` aus laufender Session oder DB; Realpath unter cwd; Content-Type nach Endung; HTML mit `Content-Security-Policy: sandbox allow-scripts allow-forms`; Text ≤ 2 MB, Bilder ≤ 20 MB, sonst 413; `Cache-Control: no-store`.
-- [ ] Handler `artifact.list|open|seen`; `open`: `open -R <path>` bzw. `open <url>` per `spawn` ohne Shell (nur macOS; sonst Fehler „nicht unterstützt“).
-- [ ] Tests: 401 ohne Cookie; 404 außerhalb cwd (`..%2f`, Symlink); CSP-Header bei `.html`; 413 bei großer Datei; `artifact.open` ohne Origin abgelehnt; Snapshot enthält `artifacts`.
-- [ ] Commit `feat(api): Vorschau-Route und Artefakt-Handler`.
+- [x] `/preview/<sessionId>/<relpfad>`: Cookie-Pflicht; `cwd` aus laufender Session oder DB; Realpath unter cwd; Content-Type nach Endung; HTML mit `Content-Security-Policy: sandbox allow-scripts allow-forms`; Text ≤ 2 MB, Bilder ≤ 20 MB, sonst 413; `Cache-Control: no-store`.
+- [x] Handler `artifact.list|open|seen`; `open`: `open -R <path>` bzw. `open <url>` per `spawn` ohne Shell (nur macOS; sonst Fehler „nicht unterstützt“).
+- [x] Tests: 401 ohne Cookie; 404 außerhalb cwd (`..%2f`, Symlink); CSP-Header bei `.html`; 413 bei großer Datei; `artifact.open` ohne Origin abgelehnt; Snapshot enthält `artifacts`.
+- [x] Commit `feat(api): Vorschau-Route und Artefakt-Handler`.
 
 ### Task 1.3: Ergebnis-Frame im Browser
 **Files:** Create `public/js/ui/results.js`; Modify `public/js/store.js` (`artifacts: Map<sessionId, Artifact[]>`, apply add/update/list, `unseenCount(sessionId)`), `public/js/main.js`, `public/js/ui/chat.js` (Frame rechts an der Chat-Leiste einhängen, Umschalt-Icon „Ergebnisse“ mit Zähler), `public/js/ui/common.js` (kleiner Markdown-Renderer: Überschriften, Listen, Code, Links – nach `esc`), `public/css/panels.css`, `public/js/demo.js` (Beispiel-Artefakte: eine HTML-Seite als Data-URL-iframe, eine Markdown-Karte, eine PDF-Hinweiskarte).
-- [ ] Frame laut Spec (Liste, Vorschau je kind, Knöpfe Öffnen/Link kopieren/Neuer Tab/Neu laden, einklappbar, `localStorage`-Zustand, auto-wählt neuestes).
-- [ ] iframe-Regeln: Dateien `sandbox="allow-scripts allow-forms"`, externe/localhost `sandbox="allow-scripts allow-forms allow-same-origin"`; `onerror`/Timeout 4 s ohne `load` → Karte „im neuen Tab öffnen“.
-- [ ] Browser-Prüfung (Port 4318, Claude-Session im Ordner agentcity): Prompt „Lege `docs/demo.html` mit einer kleinen Seite und `docs/demo.md` mit drei Zeilen an“ → zwei Artefakte erscheinen, HTML als Vorschau, MD gerendert, „Öffnen“ zeigt die Datei im Finder. Danach die Testdateien löschen (Prompt an den Agenten oder manuell) und Session schließen.
-- [ ] Commit `feat(web): Ergebnis-Frame`.
+- [x] Frame laut Spec (Liste, Vorschau je kind, Knöpfe Öffnen/Link kopieren/Neuer Tab/Neu laden, einklappbar, `localStorage`-Zustand, auto-wählt neuestes).
+- [x] iframe-Regeln: Dateien `sandbox="allow-scripts allow-forms"`, externe/localhost `sandbox="allow-scripts allow-forms allow-same-origin"`; `onerror`/Timeout 4 s ohne `load` → Karte „im neuen Tab öffnen“.
+- [x] Browser-Prüfung (Port 4318, Claude-Session im Ordner agentcity): Prompt „Lege `docs/demo.html` mit einer kleinen Seite und `docs/demo.md` mit drei Zeilen an“ → zwei Artefakte erscheinen, HTML als Vorschau, MD gerendert, „Öffnen“ zeigt die Datei im Finder. Danach die Testdateien löschen (Prompt an den Agenten oder manuell) und Session schließen. *(geprüft mit dem Fake-Agenten `test/fake-agent.js` – Befehle `diff <pfad>` und `sag <text>` – statt einer echten Claude-Session; „Öffnen“ nur per Test mit gefälschtem `spawn`)*
+- [x] Commit `feat(web): Ergebnis-Frame`.
 
 ---
 
@@ -60,11 +60,11 @@ Artefakt-Objekt wie in der Spec (`id, sessionId, agentId, t, updatedAt, kind, ti
 
 ### Task 2.1: CSS3D-Ebene und Leinwand
 **Files:** Create `public/js/screen.js`; Modify `public/js/world.js` (zweiter Renderer `CSS3DRenderer` mit eigenem Container `#screens` zwischen `#stage` und `#labels`, `pointer-events` nur auf Leinwand-Elementen; Render-Aufruf im Loop; Resize), `public/js/room.js` (Monitore der Werkbank entfernen, Leinwand-Platzhalterfläche 4,8 × 2,7 an der Rückwand bei x = 0,6, Mitte y = 1,9; Werkbank bleibt), `public/index.html` (`<div id="screens">`), `public/css/app.css`.
-- [ ] `Screen`-Klasse: `CSS3DObject` mit DOM (`.screen`): Inhalt je Artefakt (iframe `pointer-events:none`, Textkarte 40 Zeilen, Bild, Hinweiskarte), Chip „n Ergebnisse“ mit Ungesehen-Punkt, Leerzustand. `setArtifact(a | null)`, `setCount(n, unseen)`. Klick → Callback `onOpen(sessionId)`. Skalierung: DOM 960 × 540 px, `scale 0.005` → 4,8 × 2,7 Einheiten.
-- [ ] `World.syncScreens(artifactsBySession, agents, selected)`: je Raum neuestes Artefakt (Raum = Projekt; bei ausgewähltem Agent dessen neuestes); maximal 4 iframes gleichzeitig (nach Kameradistanz), Rest Hinweiskarte; Räume außerhalb des Frustums: Inhalt pausieren (`display:none` des iframes).
-- [ ] Wiedergabemodus: `syncScreens` bekommt Artefakte bis `t` (Store liefert `artifactsUntil(t)` aus `artifact.list` + Zeit).
-- [ ] Prüfung: `?demo` zeigt in drei Räumen Leinwände (HTML, Markdown, Hinweis); Live mit Session aus Task 1.3; Klick auf Leinwand öffnet Chat + Frame.
-- [ ] Commit `feat(web): Leinwand im Raum`.
+- [x] `Screen`-Klasse: `CSS3DObject` mit DOM (`.screen`): Inhalt je Artefakt (iframe `pointer-events:none`, Textkarte 40 Zeilen, Bild, Hinweiskarte), Chip „n Ergebnisse“ mit Ungesehen-Punkt, Leerzustand. `setArtifact(a | null)`, `setCount(n, unseen)`. Klick → Callback `onOpen(sessionId)`. Skalierung: DOM 960 × 540 px, `scale 0.005` → 4,8 × 2,7 Einheiten.
+- [x] `World.syncScreens(artifactsBySession, agents, selected)`: je Raum neuestes Artefakt (Raum = Projekt; bei ausgewähltem Agent dessen neuestes); maximal 4 iframes gleichzeitig (nach Kameradistanz), Rest Hinweiskarte; Räume außerhalb des Frustums: Inhalt pausieren (`display:none` des iframes).
+- [x] Wiedergabemodus: `syncScreens` bekommt Artefakte bis `t` (Store liefert `artifactsUntil(t)` aus `artifact.list` + Zeit).
+- [x] Prüfung: `?demo` zeigt in drei Räumen Leinwände (HTML, Markdown, Hinweis); Live mit Session aus Task 1.3; Klick auf Leinwand öffnet Chat + Frame.
+- [x] Commit `feat(web): Leinwand im Raum`.
 
 ---
 
