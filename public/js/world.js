@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Avatar } from './avatar.js';
 import { agentColor } from './config.js';
 import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR } from './room.js';
+import { Town } from './town.js';
 
 // ---------------------------------------------------------------- Welt
 export class World {
@@ -84,6 +85,8 @@ export class World {
     const grid = new THREE.GridHelper(600, 150, '#252b35', '#20252e');
     grid.position.y = -0.455;
     scene.add(grid);
+
+    this.town = new Town(scene); // Pflasterstraßen und Bäume um die Räume
 
     this.linkGroup = new THREE.Group();
     scene.add(this.linkGroup);
@@ -254,6 +257,7 @@ export class World {
         (rr - (rows - 1) / 2) * (ROOM_D + ROOM_GAP + 1.5),
       );
     });
+    this.town.layout(rooms.map((room) => room.group.position));
     this.bounds = { w: cols * (ROOM_W + ROOM_GAP), d: rows * (ROOM_D + ROOM_GAP + 1.5) };
     const ext = Math.max(this.bounds.w, this.bounds.d) * 0.62 + 6;
     const sc = this.sun.shadow.camera;
