@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { agentColor, avatarStyle, skinTone, hairTone, hash, STATUS, STATIONS, agentName } from './config.js';
+import { esc } from './ui/common.js';
 
 const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 6, 12);
 const GEO = {
@@ -395,8 +396,4 @@ export class Avatar {
     this.ringMat.dispose();
     this.selMat.dispose();
   }
-}
-
-function esc(s) {
-  return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 }

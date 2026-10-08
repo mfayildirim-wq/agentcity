@@ -34,7 +34,10 @@ export function createRecorder({ bus, repo, state, flushMs = 500, debounceMs = 1
       pending.delete(agent.id);
       const cur = latest.get(agent.id) ?? agent;
       latest.delete(agent.id);
-      writeAgent(cur);
+      // inzwischen entfernt: als beendet schreiben (kein Zurücksetzen von ended_at) und nicht mehr merken
+      const gone = state && !state.get(agent.id);
+      writeAgent(gone && cur.status !== 'done' && cur.status !== 'error' ? { ...cur, status: 'done' } : cur);
+      if (gone) lastWrite.delete(agent.id);
     }, Math.max(0, debounceMs - since)));
   }
 

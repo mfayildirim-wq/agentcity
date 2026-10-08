@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
-const MAX_ENTRIES = 500;
+export const MAX_ENTRIES = 500;
 
 export default {
   async 'fs.pickDir'(ctx, msg) {
@@ -27,6 +27,9 @@ export default {
     const parent = path.dirname(dir);
     let recent = [];
     try { recent = ctx.repo?.recentProjects?.(10) ?? []; } catch { /* DB optional */ }
-    return { path: dir, parent: parent !== dir ? parent : null, entries: entries.slice(0, MAX_ENTRIES), recent };
+    return {
+      path: dir, parent: parent !== dir ? parent : null, entries: entries.slice(0, MAX_ENTRIES), recent,
+      ...(entries.length > MAX_ENTRIES ? { truncated: true } : {}),
+    };
   },
 };

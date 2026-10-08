@@ -3,6 +3,7 @@
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { createAgent, toolCategory } from '../core/model.js';
+import { trunc } from '../core/util.js';
 
 const IDLE_MS = 2 * 60_000;
 const STALE_MS = 15 * 60_000;
@@ -16,11 +17,6 @@ const SNAPSHOT_EVENTS = 14;
 const SUB_KEEP_MS = STALE_MS + DONE_LINGER_MS;
 
 // ---------------------------------------------------------------- Hilfen
-const trunc = (s, n) => {
-  if (s == null) return null;
-  s = String(s).replace(/\s+/g, ' ').trim();
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
-};
 const base = (p) => (p ? path.basename(String(p)) : '');
 
 // kurzer Inhalts-Hash (FNV-1a) für stabile, eindeutige Ereignis-Ids

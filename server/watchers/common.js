@@ -9,11 +9,7 @@ export const STALE_MS = 15 * 60_000;
 export const SNAPSHOT_EVENTS = 14;
 export const MAX_EVENTS = 40;
 
-export const trunc = (s, n) => {
-  if (s == null) return null;
-  s = String(s).replace(/\s+/g, ' ').trim();
-  return s.length > n ? s.slice(0, n - 1) + '…' : s;
-};
+export { trunc } from '../core/util.js';
 export const base = (p) => (p ? path.basename(String(p)) : '');
 
 // kurzer Inhalts-Hash (FNV-1a) für stabile Ereignis-Ids

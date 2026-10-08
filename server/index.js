@@ -1,7 +1,7 @@
-#!/usr/bin/env node
-// Agent Arena v2 – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
-import { loadConfig, acquireLock } from './config.js';
+// Agent Arena v2 (gestartet über start.js) – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
+import { loadConfig, acquireLock, lockMessage } from './config.js';
 import { openDb } from './db/migrate.js';
+import { startRetention } from './db/retention.js';
 import { createRepo } from './db/repo.js';
 import { createRecorder } from './db/recorder.js';
 import { createBus } from './core/bus.js';
@@ -31,11 +31,12 @@ const config = loadConfig();
 // pro Datenordner nur ein Server (sonst schrieben zwei Prozesse in dieselbe DB und beendeten fremde Sessions)
 const lock = acquireLock(config.dataDir);
 if (!lock.ok) {
-  console.error(`\n  Agent Arena läuft bereits mit diesem Datenordner (${config.dataDir}, PID ${lock.pid}).`);
-  console.error(`  Anderer Datenordner:  ARENA_DATA_DIR=/pfad npm start\n`);
+  console.error(`\n${lockMessage(config.dataDir, lock.pid).map((l) => `  ${l}`).join('\n')}\n`);
   process.exit(1);
 }
 const db = openDb(config.dbPath);
+// Aufräumregel: beim Start und danach täglich (ARENA_RETENTION_DAYS)
+const retention = startRetention(db, { days: config.retentionDays });
 const repo = createRepo(db);
 // Tool-Registry: Standardliste + ~/.agent-arena/agents.json
 const registry = createRegistry({ dataDir: config.dataDir, arenaDir: config.arenaDir });
@@ -47,7 +48,7 @@ const acp = createSessionManager({ state, bus, repo, registry, pty });
 const recorder = createRecorder({ bus, repo, state });
 // Besprechungen und Aufgaben (offene aus der DB laden, im Snapshot enthalten)
 const meetings = createMeetings({ state, bus, repo, acp, registry });
-const tasks = createTasks({ state, bus, repo, acp });
+const tasks = createTasks({ state, bus, repo, acp, meetings });
 meetings.load();
 tasks.load();
 const watchers = startWatchers({ state, bus, repo, config, autoStart: false });
@@ -97,6 +98,9 @@ async function shutdown(signal) {
   await Promise.race([acp.stopAll(), new Promise((r) => setTimeout(r, 2500))]);
   await pty.closeAll({ graceMs: 1000 });
   recorder.stop();
+  retention.stop();
+  meetings.stop();
+  tasks.stop();
   ws.close();
   server.close();
   try { db.close(); } catch { /* bereits geschlossen */ }
@@ -105,3 +109,4 @@ async function shutdown(signal) {
 }
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGHUP', () => shutdown('SIGHUP'));

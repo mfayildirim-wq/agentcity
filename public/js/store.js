@@ -63,6 +63,14 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
     if (snap.now) state.clockOffset = snap.now - Date.now();
     const prev = state.agents;
     state.agents = new Map((snap.agents || []).map((a) => [a.id, mergeAgent(prev.get(a.id), a)]));
+    // Chats, Diffs und Terminals von Agenten, die nicht mehr im Snapshot sind, verwerfen
+    for (const id of Object.keys(state.chats)) if (!state.agents.has(id)) delete state.chats[id];
+    for (const id of Object.keys(state.diffs)) if (!state.agents.has(id)) delete state.diffs[id];
+    let termGone = false;
+    for (const [k, t] of state.terminals) {
+      if (!state.agents.has(t.ownerId ?? t.agentId)) { state.terminals.delete(k); termGone = true; }
+    }
+    if (termGone) changed('terminals');
     state.tasks = toMap(snap.tasks);
     state.meetings = toMap((snap.meetings || []).filter((m) => !m.closedAt));
     if (state.meetingView && !state.meetings.has(state.meetingView)) setMeetingView(null);

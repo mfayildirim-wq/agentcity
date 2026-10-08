@@ -1,12 +1,7 @@
 // WS-Handler: Besprechungen anlegen, ändern (Teilnehmer, Titel, schließen), Nachrichten senden.
-const need = (ctx) => {
-  if (!ctx.meetings) throw new Error('Besprechungen nicht verfügbar');
-  return ctx.meetings;
-};
-const str = (v, name) => {
-  if (typeof v !== 'string' || !v) throw new Error(`${name} fehlt`);
-  return v;
-};
+import { need as needIn, str } from './util.js';
+
+const need = (ctx) => needIn(ctx.meetings, 'Besprechungen nicht verfügbar');
 
 export default {
   'meeting.create'(ctx, msg) {

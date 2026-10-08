@@ -241,22 +241,17 @@ test('Besprechung mit 2 Agenten: @Fake-1 erreicht nur einen, Antworten im Meetin
   await assert.rejects(() => meetings.message(m.id, 'x'), /nicht gefunden|geschlossen/);
 });
 
-test('load: Besprechungen ohne laufende Teilnehmer werden geschlossen, alte Beiträge gelöscht', async () => {
+test('load: Besprechungen ohne laufende Teilnehmer werden geschlossen', async () => {
   const a = await manager.createSession({ toolId: 'fake', cwd, mode: 'auto' });
   const keep = repo.meetings.create({ title: 'Lebt', participantIds: [a, 'a:weg'] });
   repo.meetings.addMessage(keep.id, { id: 'u0', role: 'user', text: 'noch da', t: 1 });
   const row = repo.meetings.create({ title: 'Alt', participantIds: ['a:weg'] });
   repo.meetings.addMessage(row.id, { id: 'u1', role: 'user', text: 'früher', t: 1 });
-  const old = repo.meetings.create({ title: 'Zu', participantIds: [] });
-  repo.meetings.addMessage(old.id, { id: 'u2', role: 'user', text: 'uralt', t: 1 });
-  repo.meetings.update(old.id, { closed: true });
-  // „jetzt“ liegt 31 Tage in der Zukunft → die geschlossene Besprechung ist alt genug
-  assert.equal(meetings.load({ now: Date.now() + 31 * 24 * 3600_000 }), 1);
+  assert.equal(meetings.load(), 1);
   assert.deepEqual(meetings.get(keep.id).participantIds, [a]);
   assert.equal(meetings.get(keep.id).messages[0].text, 'noch da');
   assert.equal(meetings.get(row.id), null);
   assert.ok(repo.meetings.get(row.id).closedAt, 'leere Besprechung geschlossen');
   assert.equal(repo.meetings.get(row.id).messages.length, 1, 'frisch geschlossen: Beiträge bleiben');
-  assert.equal(repo.meetings.get(old.id).messages.length, 0, 'nach 30 Tagen gelöscht');
   assert.equal(state.meetings.size, 1);
 });

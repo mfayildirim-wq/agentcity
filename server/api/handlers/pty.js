@@ -1,15 +1,10 @@
 // WS-Handler für Terminals: Nutzer-Shell je Agent (öffnen, Eingabe, Größe, schließen) und
 // Liste der Agenten-Terminals mit Puffer (Wiederanzeige nach dem Neuladen).
+import { need as needIn, str } from './util.js';
+
 const MAX_INPUT = 64 * 1024;
 
-const need = (ctx) => {
-  if (!ctx.pty) throw new Error('Terminals nicht verfügbar');
-  return ctx.pty;
-};
-const str = (v, name) => {
-  if (typeof v !== 'string' || !v) throw new Error(`${name} fehlt`);
-  return v;
-};
+const need = (ctx) => needIn(ctx.pty, 'Terminals nicht verfügbar');
 
 // Nur Nutzer-Shells nehmen Eingaben an; Agenten-Terminals sind schreibgeschützt
 function userTerm(pty, ptyId) {

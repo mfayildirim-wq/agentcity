@@ -203,9 +203,6 @@ export function createRepo(db) {
           closed === undefined ? cur.closed_at ?? null : closed ? Date.now() : null, id);
       return rowToMeeting(q('SELECT * FROM meetings WHERE id = ?').get(id), 0);
     },
-    // Beiträge von Besprechungen löschen, die vor `before` geschlossen wurden
-    purge: (before) => q(`DELETE FROM meeting_messages WHERE meeting_id IN
-      (SELECT id FROM meetings WHERE closed_at IS NOT NULL AND closed_at < ?)`).run(before).changes,
     addMessage(meetingId, m) {
       q('INSERT OR REPLACE INTO meeting_messages (id, meeting_id, role, agent_id, text, target_ids, t) VALUES (?, ?, ?, ?, ?, ?, ?)')
         .run(m.id ?? randomUUID(), meetingId, m.role, m.agentId ?? null, m.text, m.targetIds ? JSON.stringify(m.targetIds) : null, m.t ?? Date.now());

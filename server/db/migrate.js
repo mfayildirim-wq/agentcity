@@ -11,6 +11,8 @@ export function openDb(target) {
   const isFile = typeof target === 'string' && target !== ':memory:';
   if (isFile) fs.mkdirSync(path.dirname(target), { recursive: true });
   const db = target instanceof DatabaseSync ? target : new DatabaseSync(target);
+  // neue Datenbank (noch ohne Tabellen): freie Seiten per incremental_vacuum zurückgeben (siehe retention.js)
+  if (!db.prepare('SELECT 1 FROM sqlite_master LIMIT 1').get()) db.exec('PRAGMA auto_vacuum=INCREMENTAL');
   if (isFile) db.exec('PRAGMA journal_mode=WAL');
   db.exec('PRAGMA busy_timeout=2000');
   db.exec(SCHEMA);
@@ -19,5 +21,6 @@ export function openDb(target) {
   if (!cols.includes('parent_session_id')) db.exec('ALTER TABLE sessions ADD COLUMN parent_session_id TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at)');
   db.exec('CREATE INDEX IF NOT EXISTS sessions_acp ON sessions(acp_session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS messages_agent_t ON messages(agent_id, t)');
   return db;
 }

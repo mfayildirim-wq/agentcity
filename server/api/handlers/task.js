@@ -1,12 +1,7 @@
 // WS-Handler: Aufgaben anlegen, ändern (Spalte, Titel, Beschreibung), zuweisen (als Prompt), löschen.
-const need = (ctx) => {
-  if (!ctx.tasks) throw new Error('Aufgaben nicht verfügbar');
-  return ctx.tasks;
-};
-const str = (v, name) => {
-  if (typeof v !== 'string' || !v) throw new Error(`${name} fehlt`);
-  return v;
-};
+import { need as needIn, str } from './util.js';
+
+const need = (ctx) => needIn(ctx.tasks, 'Aufgaben nicht verfügbar');
 
 export default {
   // optional assigneeId: gleich zuweisen (Aufgabe aus einer Besprechung)

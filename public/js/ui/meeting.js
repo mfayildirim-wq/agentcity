@@ -5,6 +5,8 @@ import { ICON, esc, renderText, fmtTime, DIAMOND } from './common.js';
 
 export const MEETING_ICON = 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8';
 const TASK_ICON = 'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9';
+const WARN_ICON = 'M12 3 2 20h20zM12 9v5M12 17h.01';
+export const AUTO_WARNING = 'Teilnehmer im Auto-Modus: Beiträge anderer Agenten können Werkzeuge ohne Rückfrage auslösen';
 const ADD_PERSON = 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM19 8v6M22 11h-6';
 
 // steuerbare Hauptagenten (Teilnehmer bzw. Bearbeiter möglich)
@@ -96,6 +98,7 @@ export class MeetingBar {
     el.innerHTML = `<div class="chat meet">
       <div class="c-head">
         <span class="m-ic">${svgIcon(MEETING_ICON)}</span><span class="c-name"></span>
+        <span class="m-auto hidden" title="${AUTO_WARNING}">${svgIcon(WARN_ICON)}</span>
         <div class="m-people"></div>
         <button class="icon-btn sm m-add" title="Teilnehmer hinzufügen/entfernen">${svgIcon(ADD_PERSON)}</button>
         <button class="icon-btn sm m-end" title="Besprechung beenden">${svgIcon(ICON.power)}</button>
@@ -113,6 +116,7 @@ export class MeetingBar {
     this.input = el.querySelector('textarea');
     this.nameEl = el.querySelector('.c-name');
     this.peopleEl = el.querySelector('.m-people');
+    this.autoEl = el.querySelector('.m-auto');
     this.menu = el.querySelector('.m-menu');
     this.formEl = el.querySelector('.m-form');
 
@@ -229,6 +233,8 @@ export class MeetingBar {
     const title = meetingTitle(m);
     if (this.nameEl.textContent !== title) this.nameEl.textContent = title;
     this.renderPeople(m);
+    const auto = m.participantIds.some((id) => this.store.state.agents.get(id)?.arenaMode === 'auto');
+    this.autoEl.classList.toggle('hidden', !auto);
     if (!this.menu.classList.contains('hidden') && (changes.has('agents') || changes.has('meetings'))) this.drawMenu();
     const atBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 40;
     this.renderLog(m);

@@ -168,6 +168,7 @@ export class NewSessionDialog {
     box.innerHTML = `
       ${recent.map((r) => `<button class="ns-dir recent" data-dir="${esc(r.cwd)}" title="${esc(r.cwd)}">${svgIcon(ICON.restart)}<span>${esc(r.name || r.cwd)}</span><em>\u200e${esc(r.cwd)}\u200e</em></button>`).join('')}
       ${(l?.entries ?? []).map((d) => `<button class="ns-dir" data-dir="${esc(d.path)}">${svgIcon(ICON.folder)}<span>${esc(d.name)}</span></button>`).join('')}
+      ${l?.truncated ? '<div class="ns-none">… gekürzt</div>' : ''}
       ${l && !l.entries.length && !recent.length ? '<div class="ns-none">Keine Unterordner</div>' : ''}`;
     box.scrollTop = 0;
   }

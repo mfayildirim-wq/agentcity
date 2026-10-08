@@ -7,21 +7,12 @@ import { createAgent } from '../core/model.js';
 import { AcpClient, rpcErrorMessage } from './client.js';
 import { createAcpSession } from './session.js';
 import { createTerminalHandlers } from './terminal.js';
+import { withTimeout } from '../core/util.js';
 
 export const MODES = ['confirm', 'auto']; // Arena-Modus: Rückfragen bestätigen oder automatisch freigeben
 export const START_TIMEOUT_MS = 60_000;
 // Tools, deren Adapter session/load sicher können (weitere merkt sich die Arena aus initialize)
 export const LOAD_CAPABLE = new Set(['claude', 'codex']);
-
-// Promise mit Zeitlimit (für initialize/newSession/loadSession)
-export function withTimeout(p, ms, label) {
-  let t;
-  const timeout = new Promise((_, reject) => {
-    t = setTimeout(() => reject(new Error(`${label}: keine Antwort nach ${Math.round(ms / 1000)} s`)), ms);
-    t.unref?.();
-  });
-  return Promise.race([p, timeout]).finally(() => clearTimeout(t));
-}
 
 function checkDir(cwd) {
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error('Projektordner muss ein absoluter Pfad sein');
@@ -234,6 +225,8 @@ export function createSessionManager({
     // alle Terminals der Session (Nutzer-Shell, Agenten- und Anzeige-Terminals) beenden
     try { pty?.closeAgent(agentId); } catch { /* bereits weg */ }
     for (const s of state.all()) if (s.parentId === agentId) state.remove(s.id);
+    // Agent-Zeile mit Ende schreiben, bevor er aus dem Zustand verschwindet (der Recorder schreibt Entferntes nicht mehr sicher)
+    try { if (a) repo?.upsertAgent?.({ ...(state.get(agentId) ?? a), status: 'done', lastActivity: Date.now() }); } catch { /* DB optional */ }
     state.remove(agentId);
     // fehlgeschlagene Übernahme: die externe (Watcher-)Session bleibt offen
     try { if (a?.sessionId && e.ownsSession) repo?.endSession?.(a.sessionId, status); } catch { /* DB optional */ }

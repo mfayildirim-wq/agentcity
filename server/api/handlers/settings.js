@@ -1,9 +1,8 @@
 // WS-Handler: Agenten-Tools anzeigen, speichern, löschen (Standard → deaktiviert), testen.
 // Vollständige Einträge (Befehl, Argumente, Umgebung) gibt es nur hier – im Snapshot fehlen sie.
-const need = (ctx) => {
-  if (!ctx.registry?.save) throw new Error('Einstellungen nicht verfügbar');
-  return ctx.registry;
-};
+import { need as needIn } from './util.js';
+
+const need = (ctx) => needIn(ctx.registry?.save && ctx.registry, 'Einstellungen nicht verfügbar');
 
 // geänderte Tool-Liste an alle Browser
 const announce = (ctx) => ctx.bus?.emit('tools.update', { tools: ctx.registry.publicList() });

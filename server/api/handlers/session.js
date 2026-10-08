@@ -1,12 +1,7 @@
 // WS-Handler: Sessions starten, Prompts senden, abbrechen, übernehmen, schließen, Modus wechseln.
-const need = (ctx) => {
-  if (!ctx.acp) throw new Error('Steuerung nicht verfügbar');
-  return ctx.acp;
-};
-const str = (v, name) => {
-  if (typeof v !== 'string' || !v) throw new Error(`${name} fehlt`);
-  return v;
-};
+import { need as needIn, str } from './util.js';
+
+const need = (ctx) => needIn(ctx.acp, 'Steuerung nicht verfügbar');
 
 export default {
   async 'session.create'(ctx, msg) {
@@ -17,11 +12,12 @@ export default {
     return { agentId };
   },
 
-  // Antwortet sofort; der Verlauf kommt als chat.*/event/agent.update
+  // Antwortet sofort; der Verlauf kommt als chat.*/event/agent.update.
+  // Ein meetingId vom Client wird ignoriert – Besprechungs-Prompts entstehen nur serverseitig (meetings.js).
   async 'session.prompt'(ctx, msg) {
     const acp = need(ctx);
     let early = null;
-    const run = acp.prompt(str(msg.agentId, 'agentId'), msg.text, { meetingId: msg.meetingId ?? null });
+    const run = acp.prompt(str(msg.agentId, 'agentId'), msg.text);
     run.catch((err) => { early = err; });
     await new Promise((r) => setImmediate(r));
     if (early) throw early;

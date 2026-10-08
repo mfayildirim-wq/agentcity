@@ -3,16 +3,13 @@
 import { randomUUID } from 'node:crypto';
 import { createAgent, createEvent, createPermission, kindToCategory } from '../core/model.js';
 import { rpcErrorMessage } from './client.js';
+import { trunc } from '../core/util.js';
 
 const MAX_AGENT_EVENTS = 20;
 const MAX_DIFF_TEXT = 64 * 1024;
 const TEXT_THROTTLE_MS = 300;
 const SUB_LINGER_MS = 3 * 60_000;
 
-const trunc = (s, n) => {
-  const t = String(s ?? '').replace(/\s+/g, ' ').trim();
-  return t.length > n ? t.slice(0, n - 1) + '…' : t;
-};
 
 // letzter (angefangener) Satz für die Sprechblase
 function lastSentence(text, n = 160) {

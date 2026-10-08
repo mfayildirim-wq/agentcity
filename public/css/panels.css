@@ -333,6 +333,8 @@ body.has-chat .detail { max-height: calc(100vh - 80px); }
 .chat.term-mode .c-term { display: block; }
 .chat.term-mode .c-log, .chat.term-mode .c-input, .chat.term-mode .c-arena, .chat.term-mode .c-mode { display: none; }
 .chat.collapsed .c-term { display: none; }
+.c-kill { display: none; }
+.chat.term-mode .c-kill { display: inline-flex; }
 .xt { width: 100%; height: 100%; }
 .xt .xterm { height: 100%; }
 .xt .xterm-viewport { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.14) transparent; }
@@ -395,6 +397,8 @@ body.panel-off .meet-pick { right: 12px; }
 .chat.meet { border-color: rgba(217, 119, 87, 0.28); }
 .m-ic { color: var(--accent); display: grid; place-items: center; }
 .m-ic .ic { width: 14px; height: 14px; }
+.m-auto { color: #d9a62e; display: grid; place-items: center; cursor: help; }
+.m-auto .ic { width: 13px; height: 13px; }
 .chat.meet .c-name { flex: 0 1 auto; color: var(--tx); }
 .m-people { display: flex; align-items: center; gap: 2px; flex: 1; min-width: 0; overflow: hidden; }
 .m-person { position: relative; cursor: pointer; padding: 2px; border-radius: 50%; }

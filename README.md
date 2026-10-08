@@ -132,7 +132,9 @@ Alles liegt in `~/.agent-arena/` (Ordner Modus 0700):
 | `arena.db`    | SQLite (`node:sqlite`): Projekte, Sessions, Agenten, Ereignisse, Nachrichten, Berechtigungen, Aufgaben, Besprechungen |
 
 Ereignisse werden gebündelt (alle 500 ms) geschrieben; Diff-Texte werden nicht gespeichert (nur Pfad und
-Zeilenzahlen). Beiträge von Besprechungen, die seit über 30 Tagen geschlossen sind, werden gelöscht.
+Zeilenzahlen). Aufräumregel (beim Start und täglich): Ereignisse und Berechtigungen älter als
+`ARENA_RETENTION_DAYS` (Standard 90 Tage), Nachrichten, Besprechungsbeiträge sowie Sessions/Agenten ohne Ereignisse
+älter als das Doppelte werden gelöscht; danach wird die Datenbank kompaktiert.
 
 ## Sicherheit
 
@@ -185,6 +187,7 @@ test/               node --test
 | `ARENA_DATA_DIR`      | `~/.agent-arena`                 | Token, Tools, Datenbank                |
 | `ARENA_OPEN`          | –                                | `1`: Login-Link beim Start öffnen (macOS) |
 | `ARENA_DB`            | `<ARENA_DATA_DIR>/arena.db`      | SQLite-Datei                           |
+| `ARENA_RETENTION_DAYS`| `90`                             | Aufbewahrung von Ereignissen/Berechtigungen in Tagen (Nachrichten, Sessions: doppelt so lang) |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects`             | Claude-Code-Transkripte                |
 | `CODEX_SESSIONS_DIR`  | `~/.codex/sessions`              | Codex-Sessions                         |
 | `OPENCODE_DB`         | `~/.local/share/opencode/opencode.db` | OpenCode-Datenbank (nur lesend)   |

@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ARENA_DIR } from '../config.js';
 import { AcpClient, rpcErrorMessage } from '../acp/client.js';
-import { withTimeout } from '../acp/manager.js';
+import { withTimeout } from '../core/util.js';
 
 const DEFAULTS_FILE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'default-agents.json');
 export const AVATAR_STYLES = ['gem', 'cap', 'hoodie', 'scarf', 'visor'];

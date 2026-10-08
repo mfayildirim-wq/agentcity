@@ -161,6 +161,17 @@ export class ShellView {
 
   focusSoon() { requestAnimationFrame(() => { this.box.refit(); this.box.focus(); }); }
 
+  // Shell beenden (pty.close); eine Taste öffnet danach eine neue
+  async close() {
+    const ptyId = this.ptyId;
+    if (!ptyId || this.exited) return;
+    try {
+      await this.request('pty.close', { ptyId });
+    } catch (err) {
+      this.toast?.(err.message, 'error');
+    }
+  }
+
   // Agent weg: Ansicht leeren (die Shell beendet der Server beim Schließen der Session)
   detach() {
     if (!this.agentId && !this.ptyId) return;

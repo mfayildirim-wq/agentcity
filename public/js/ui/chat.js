@@ -39,7 +39,8 @@ export class ChatBar {
         <select class="c-mode" title="Modus des Tools"></select>
         ${shell ? `<div class="seg mini icons c-view" title="Chat ⇄ Terminal">
           <button data-view="chat" class="on" title="Chat">${svgIcon(ICON.prompt)}</button><button data-view="term" title="Terminal (Shell im Projektordner)">${svgIcon(ICON.terminal)}</button>
-        </div>` : ''}
+        </div>
+        <button class="icon-btn sm c-kill" title="Shell beenden">${svgIcon(ICON.close)}</button>` : ''}
         <button class="icon-btn sm c-toggle" title="Verlauf ein/aus">${svgIcon(ICON.chevDown)}</button>
       </div>
       <div class="c-log"></div>
@@ -57,6 +58,7 @@ export class ChatBar {
     this.nameEl = el.querySelector('.c-name');
     this.avEl = el.querySelector('.av');
     this.termEl = el.querySelector('.c-term');
+    el.querySelector('.c-kill')?.addEventListener('click', () => this.shell?.close());
     el.querySelector('.c-view')?.addEventListener('click', (e) => {
       const b = e.target.closest('[data-view]');
       if (b) this.setView(b.dataset.view);

@@ -2,12 +2,13 @@
 // zugewiesenen Aufgabe eines Agenten folgt dem Agenten: arbeitet er → „In Arbeit“ (active), wartet er auf
 // den Nutzer (Zugende, Rückfrage, Fehler) → „Wartet auf dich“ (waiting). „Erledigt“ (done) setzt nur der Nutzer.
 import { randomUUID } from 'node:crypto';
-import { isControllable } from './meetings.js';
+import { isControllable, cleanText } from './meetings.js';
 
 export const TASK_STATUS = ['open', 'active', 'waiting', 'done'];
 const MAX_TITLE = 200;
 const MAX_DESCRIPTION = 10_000;
-const DONE_KEEP_MS = 7 * 24 * 3600_000; // erledigte Aufgaben so lange im Snapshot
+export const DONE_KEEP_MS = 7 * 24 * 3600_000; // erledigte Aufgaben so lange im Zustand/Snapshot (in der DB bleiben sie)
+const SWEEP_MS = 3600_000;
 
 // Agentenstatus → Aufgabenstatus (nur für die aktuelle Aufgabe des Agenten)
 const FOLLOW = {
@@ -15,12 +16,18 @@ const FOLLOW = {
   waiting_permission: 'waiting', waiting_user: 'waiting', error: 'waiting', done: 'waiting',
 };
 
-export function assignPrompt(task) {
+// origin: { name, title } – Herkunft aus einem Besprechungsbeitrag (sourceMessageId)
+export function assignPrompt(task, origin = null) {
   const desc = typeof task.description === 'string' && task.description.trim() ? `\n\n${task.description.trim()}` : '';
-  return `Aufgabe: ${task.title}${desc}\n\nMelde dich, wenn du fertig bist oder etwas brauchst.`;
+  let from = '';
+  if (origin) {
+    const t = cleanText(origin.title, 80);
+    from = ` (aus Beitrag von ${cleanText(origin.name, 40) || 'Agent'} in Besprechung${t ? ` „${t}“` : ''})`;
+  }
+  return `Aufgabe: ${task.title}${from}${desc}\n\nMelde dich, wenn du fertig bist oder etwas brauchst.`;
 }
 
-export function createTasks({ state, bus, repo, acp }) {
+export function createTasks({ state, bus, repo, acp, meetings = null, doneKeepMs = DONE_KEEP_MS, sweepMs = SWEEP_MS }) {
   const current = new Map(); // agentId → taskId (zuletzt zugewiesene, noch nicht erledigte Aufgabe)
   const lastStatus = new Map(); // agentId → zuletzt gesehener Agentenstatus
   const meetingTurn = new Set(); // Agenten, deren laufender/letzter Zug aus einer Besprechung stammt
@@ -56,7 +63,7 @@ export function createTasks({ state, bus, repo, acp }) {
     try { rows = repo?.tasks?.list() ?? []; } catch (err) { console.error('[tasks]', err.message); }
     const now = Date.now();
     for (const t of rows) {
-      if (t.status === 'done' && now - (t.updatedAt ?? 0) > DONE_KEEP_MS) continue;
+      if (t.status === 'done' && now - (t.updatedAt ?? 0) > doneKeepMs) continue;
       state.tasks.set(t.id, t);
       if (t.status === 'active') save(t.id, { status: 'waiting' });
     }
@@ -100,7 +107,8 @@ export function createTasks({ state, bus, repo, acp }) {
     if (!isControllable(agent, acp)) throw new Error('Nur steuerbare Agenten (Arena-Sessions) können Aufgaben übernehmen');
     let early = null;
     let run;
-    try { run = Promise.resolve(acp.prompt(agentId, assignPrompt(t))); } catch (err) { run = Promise.reject(err); }
+    const origin = t.sourceMessageId ? meetings?.sourceOf?.(t.meetingId, t.sourceMessageId) ?? null : null;
+    try { run = Promise.resolve(acp.prompt(agentId, assignPrompt(t, origin))); } catch (err) { run = Promise.reject(err); }
     run.catch((err) => { early = err; });
     await new Promise((r) => setImmediate(r));
     if (early) throw early;
@@ -156,10 +164,26 @@ export function createTasks({ state, bus, repo, acp }) {
     if (t && t.status === 'active') save(t.id, { status: 'waiting' });
   }
 
+  // erledigte Aufgaben nach doneKeepMs aus dem Zustand nehmen (bleiben in der DB); Browser erhalten task.remove
+  function sweep(now = Date.now()) {
+    let n = 0;
+    for (const t of [...state.tasks.values()]) {
+      if (t.status !== 'done' || now - (t.updatedAt ?? 0) <= doneKeepMs) continue;
+      state.tasks.delete(t.id);
+      if (t.assigneeId && current.get(t.assigneeId) === t.id) current.delete(t.assigneeId);
+      bus.emit('task.remove', { taskId: t.id });
+      n++;
+    }
+    return n;
+  }
+
   bus.on('agent.update', onAgentUpdate);
   bus.on('agent.remove', onAgentRemove);
   bus.on('chat.message', onChatMessage);
+  const sweepTimer = sweepMs ? setInterval(() => sweep(), sweepMs) : null;
+  sweepTimer?.unref?.();
   function stop() {
+    if (sweepTimer) clearInterval(sweepTimer);
     bus.off('chat.message', onChatMessage);
     bus.off('agent.update', onAgentUpdate);
     bus.off('agent.remove', onAgentRemove);
@@ -168,5 +192,5 @@ export function createTasks({ state, bus, repo, acp }) {
   const get = (id) => state.tasks.get(id) ?? null;
   const list = () => [...state.tasks.values()];
 
-  return { load, create, update, assign, remove, get, list, stop };
+  return { load, create, update, assign, remove, get, list, sweep, stop };
 }
