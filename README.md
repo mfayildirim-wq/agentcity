@@ -134,7 +134,8 @@ Alles liegt in `~/.agent-arena/` (Ordner Modus 0700):
 Ereignisse werden gebündelt (alle 500 ms) geschrieben; Diff-Texte werden nicht gespeichert (nur Pfad und
 Zeilenzahlen). Aufräumregel (beim Start und täglich): Ereignisse und Berechtigungen älter als
 `ARENA_RETENTION_DAYS` (Standard 90 Tage), Nachrichten, Besprechungsbeiträge sowie Sessions/Agenten ohne Ereignisse
-älter als das Doppelte werden gelöscht; danach wird die Datenbank kompaktiert.
+älter als das Doppelte sowie erledigte Aufgaben nach 30 Tagen werden gelöscht; danach wird die Datenbank
+kompaktiert. `arena.db` samt `-wal`/`-shm` hat Modus 0600.
 
 ## Sicherheit
 
@@ -174,7 +175,7 @@ server/
   watchers/         externe Sessions: Claude Code, Codex, OpenCode, Hermes
   db/               Schema, Migration, Repo, Recorder
   api/              HTTP, WebSocket-Router, Handler (session, permission, pty, task, meeting, settings, history, …)
-public/js/          main, store, ws, world, avatar, replay, demo, ui/*
+public/js/          main, store, ws, world, room, avatar, replay, demo, ui/*
 test/               node --test
 ```
 

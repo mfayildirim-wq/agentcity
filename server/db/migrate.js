@@ -22,5 +22,7 @@ export function openDb(target) {
   db.exec('CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at)');
   db.exec('CREATE INDEX IF NOT EXISTS sessions_acp ON sessions(acp_session_id)');
   db.exec('CREATE INDEX IF NOT EXISTS messages_agent_t ON messages(agent_id, t)');
+  db.exec('CREATE INDEX IF NOT EXISTS agents_session ON agents(session_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS sessions_parent ON sessions(parent_session_id)');
   return db;
 }

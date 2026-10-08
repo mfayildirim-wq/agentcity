@@ -214,8 +214,12 @@ export function createRepo(db) {
     id: r.id, toolId: r.tool_id, acpSessionId: r.acp_session_id, projectId: r.project_id, project: r.project_name,
     cwd: r.cwd, title: r.title, source: r.source, mode: r.mode, startedAt: r.started_at, endedAt: r.ended_at,
     duration: r.ended_at != null && r.started_at != null ? Math.max(0, r.ended_at - r.started_at) : null,
-    status: r.status, eventCount: r.event_count, parentSessionId: r.parent_session_id ?? null,
+    status: r.status, eventCount: r.event_count, parentSessionId: r.parent_session_id ?? null, resumedBy: r.resumed_by ?? null,
   });
+  // jüngste Kind-Session, die diese fortsetzt; ein gescheiterter Versuch (error ohne Ereignisse) zählt nicht
+  const RESUMED_BY = `(SELECT c.id FROM sessions c WHERE c.parent_session_id = s.id
+      AND (c.status IS NOT 'error' OR EXISTS (SELECT 1 FROM events ce WHERE ce.session_id = c.id))
+      ORDER BY c.started_at DESC LIMIT 1) AS resumed_by`;
   const history = {
     // ended: nur beendete; since: laufende oder nach diesem Zeitpunkt beendete (für den Zeitstrahl)
     sessions(opts = {}, offsetArg) {
@@ -225,14 +229,14 @@ export function createRepo(db) {
       if (o.ended) where.push('s.ended_at IS NOT NULL');
       if (o.since != null) { where.push('(s.ended_at IS NULL OR s.ended_at >= ?)'); args.push(o.since); }
       const count = o.withCounts === false ? 'NULL' : '(SELECT COUNT(*) FROM events e WHERE e.session_id = s.id)';
-      return q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd, ${count} AS event_count
+      return q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd, ${count} AS event_count, ${RESUMED_BY}
                 FROM sessions s LEFT JOIN projects p ON p.id = s.project_id
                 ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
                 ORDER BY s.started_at DESC, s.rowid DESC LIMIT ? OFFSET ?`).all(...args, o.limit ?? 50, o.offset ?? 0)
         .map(rowToSession);
     },
     session: (id) => {
-      const r = q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd, 0 AS event_count
+      const r = q(`SELECT s.*, p.name AS project_name, p.cwd AS cwd, 0 AS event_count, ${RESUMED_BY}
                    FROM sessions s LEFT JOIN projects p ON p.id = s.project_id WHERE s.id = ?`).get(id);
       return r ? rowToSession(r) : null;
     },

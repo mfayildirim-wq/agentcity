@@ -26,6 +26,15 @@ export function ensureDataDir(dir = DATA_DIR) {
   return dir;
 }
 
+// Datenbank samt WAL-Dateien nur für den Nutzer lesbar – zusätzlich zur umask aus start.js
+// (ältere Dateien, Start ohne start.js). Fehlende Dateien und Fehler werden ignoriert.
+export function secureDbFiles(dbPath) {
+  if (!dbPath || dbPath === ':memory:') return;
+  for (const f of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`]) {
+    try { fs.chmodSync(f, 0o600); } catch { /* nicht vorhanden */ }
+  }
+}
+
 // Liest das Token aus <dir>/token oder erzeugt es (32 Hex-Zeichen, Modus 0600)
 export function loadToken(dir = DATA_DIR) {
   ensureDataDir(dir);

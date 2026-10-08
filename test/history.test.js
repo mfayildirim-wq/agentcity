@@ -113,6 +113,19 @@ test('Handler: Standard 50, max. 500, hasMore; resumable nur für beendete Sessi
   assert.equal(byId.get('x').resumable, false); // Tool unbekannt
   res = await historyHandlers['history.sessions'](ctx, { ended: true });
   assert.deepEqual(res.sessions.map((s) => s.id), ['x', 's59']);
+  // bereits fortgesetzt (Kind-Session) → nicht mehr fortsetzbar, Verweis auf das Kind
+  repo.createSession({ id: 'kind', toolId: 'claude', startedAt: 400, acpSessionId: 'acp59', parentSessionId: 's59' });
+  // fehlgeschlagener Fortsetzungsversuch (error, ohne Ereignisse) zählt nicht
+  repo.createSession({ id: 'kaputt', toolId: 'claude', startedAt: 401, acpSessionId: 'acp58', parentSessionId: 's58', status: 'error' });
+  repo.endSession('kaputt', 'error', 402);
+  repo.endSession('s58', 'done', 100);
+  res = await historyHandlers['history.sessions'](ctx, { ended: true });
+  const ended = new Map(res.sessions.map((s) => [s.id, s]));
+  assert.equal(ended.get('s59').resumable, false);
+  assert.equal(ended.get('s59').resumedBy, 'kind');
+  assert.equal(ended.get('s58').resumable, true);
+  assert.equal(ended.get('s58').resumedBy, null);
+  assert.equal(repo.history.session('s59').resumedBy, 'kind');
 
   repo.insertEvents(Array.from({ length: 600 }, (_, i) => ({ ...createEvent('a', 'tool', {}, i), sessionId: 's1' })));
   res = await historyHandlers['history.events'](ctx, { sessionId: 's1' });

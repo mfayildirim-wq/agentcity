@@ -1,5 +1,5 @@
 // Agent Arena v2 (gestartet über start.js) – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
-import { loadConfig, acquireLock, lockMessage } from './config.js';
+import { loadConfig, acquireLock, lockMessage, secureDbFiles } from './config.js';
 import { openDb } from './db/migrate.js';
 import { startRetention } from './db/retention.js';
 import { createRepo } from './db/repo.js';
@@ -35,6 +35,7 @@ if (!lock.ok) {
   process.exit(1);
 }
 const db = openDb(config.dbPath);
+secureDbFiles(config.dbPath);
 // Aufräumregel: beim Start und danach täglich (ARENA_RETENTION_DAYS)
 const retention = startRetention(db, { days: config.retentionDays });
 const repo = createRepo(db);

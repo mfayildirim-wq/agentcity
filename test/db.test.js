@@ -126,3 +126,51 @@ test('insertEvents ignoriert doppelte Ids', () => {
   repo.insertEvents([e, e]);
   assert.equal(repo.history.events('s1').length, 1);
 });
+
+test('Indizes für agents(session_id) und sessions(parent_session_id)', () => {
+  const { db } = setup();
+  const idx = db.prepare("SELECT name, tbl_name FROM sqlite_master WHERE type='index'").all();
+  const has = (tbl, cols) => idx.some((i) => i.tbl_name === tbl
+    && db.prepare(`PRAGMA index_info(${JSON.stringify(i.name)})`).all().map((c) => c.name).join(',') === cols);
+  assert.ok(has('messages', 'agent_id,t'));
+  assert.ok(has('agents', 'session_id'));
+  assert.ok(has('sessions', 'parent_session_id'));
+});
+
+test('Datenbankdateien 0600 (auch -wal/-shm), fehlende Dateien ohne Fehler', async () => {
+  const fsm = await import('node:fs');
+  const osm = await import('node:os');
+  const pathm = await import('node:path');
+  const { secureDbFiles } = await import('../server/config.js');
+  const dir = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 'arena-perm-'));
+  const file = pathm.join(dir, 'arena.db');
+  const db = openDb(file);
+  db.exec('CREATE TABLE IF NOT EXISTS x (a)'); db.exec('INSERT INTO x VALUES (1)');
+  const files = [file, `${file}-wal`, `${file}-shm`].filter((f) => fsm.existsSync(f));
+  assert.ok(files.length >= 2, 'WAL-Datei vorhanden');
+  for (const f of files) fsm.chmodSync(f, 0o644);
+  secureDbFiles(file);
+  for (const f of files) assert.equal(fsm.statSync(f).mode & 0o777, 0o600, f);
+  secureDbFiles(pathm.join(dir, 'gibtsnicht.db'));
+  secureDbFiles(':memory:');
+  db.close();
+  fsm.rmSync(dir, { recursive: true, force: true });
+});
+
+test('Aufräumregel: erledigte Aufgaben nach 30 Tagen, offene bleiben', async () => {
+  const { runRetention, DONE_TASK_DAYS } = await import('../server/db/retention.js');
+  assert.equal(DONE_TASK_DAYS, 30);
+  const { db, repo } = setup();
+  const DAY = 86_400_000;
+  const now = 1000 * DAY;
+  const old = repo.tasks.create({ title: 'alt fertig', status: 'done' });
+  const fresh = repo.tasks.create({ title: 'neu fertig', status: 'done' });
+  const open = repo.tasks.create({ title: 'alt offen' });
+  db.prepare('UPDATE tasks SET updated_at = ? WHERE id IN (?, ?)').run(now - 31 * DAY, old.id, open.id);
+  db.prepare('UPDATE tasks SET updated_at = ? WHERE id = ?').run(now - 29 * DAY, fresh.id);
+  const n = runRetention(db, { now });
+  assert.equal(n.tasks, 1);
+  assert.equal(repo.tasks.get(old.id), undefined);
+  assert.ok(repo.tasks.get(fresh.id));
+  assert.ok(repo.tasks.get(open.id));
+});

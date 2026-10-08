@@ -17,9 +17,9 @@ function needRepo(ctx) {
 // Externe Id zum Laden: ACP-Session-Id, bei Watcher-Sessions die Session-Id des Tools selbst
 export const loadIdOf = (s) => s.acpSessionId ?? (s.source === 'watch' ? s.id : null);
 
-// Fortsetzbar: beendet, ladbare Id vorhanden, Tool bekannt und kann session/load
+// Fortsetzbar: beendet, noch nicht fortgesetzt (keine Kind-Session), ladbare Id vorhanden, Tool bekannt und kann session/load
 export function isResumable(s, { registry, acp }) {
-  if (s.endedAt == null || !loadIdOf(s) || !s.toolId) return false;
+  if (s.endedAt == null || s.resumedBy || !loadIdOf(s) || !s.toolId) return false;
   if (registry?.get && !registry.get(s.toolId)) return false;
   return !!acp?.canLoad?.(s.toolId);
 }

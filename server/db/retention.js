@@ -1,9 +1,10 @@
 // Aufräumregel für die Datenbank: beim Start und danach täglich alte Daten löschen, danach WAL kürzen und
 // freie Seiten zurückgeben. Frist (Tage) für Ereignisse und Berechtigungen = days, für Nachrichten,
-// Besprechungsbeiträge und Sessions/Agenten ohne Ereignisse = 2 × days.
+// Besprechungsbeiträge und Sessions/Agenten ohne Ereignisse = 2 × days; erledigte Aufgaben nach DONE_TASK_DAYS.
 export const DEFAULT_RETENTION_DAYS = 90;
 export const RETENTION_INTERVAL_MS = 24 * 3600_000;
 const DAY_MS = 24 * 3600_000;
+export const DONE_TASK_DAYS = 30;
 
 // Frist aus ARENA_RETENTION_DAYS (positive Zahl), sonst 90
 export function retentionDays(env = process.env) {
@@ -22,6 +23,7 @@ export function runRetention(db, { days = DEFAULT_RETENTION_DAYS, now = Date.now
     out.events = run('DELETE FROM events WHERE t < ?', base);
     out.permissions = run('DELETE FROM permissions WHERE t < ?', base);
     out.messages = run('DELETE FROM messages WHERE t < ?', long);
+    out.tasks = run("DELETE FROM tasks WHERE status = 'done' AND updated_at < ?", now - DONE_TASK_DAYS * DAY_MS);
     out.meetingMessages = run(`DELETE FROM meeting_messages WHERE meeting_id IN
       (SELECT id FROM meetings WHERE closed_at IS NOT NULL AND closed_at < ?)`, long);
     // beendete Sessions ohne (verbliebene) Ereignisse samt ihrer Agenten; Agenten ohne Ereignisse und ohne Session

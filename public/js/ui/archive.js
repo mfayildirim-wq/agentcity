@@ -1,5 +1,6 @@
 // Archiv (Panel links): beendete Sessions mit Projekt, Tool-Farbe, Datum, Dauer und Titel.
 // Klick klappt die Ereignisliste auf; „Fortsetzen“ (nur bei resumable) lädt die Session per session/load neu.
+// Bereits fortgesetzte Sessions (resumedBy) zeigen statt des Knopfs den Hinweis „fortgesetzt“.
 import { STATIONS, STATUS, svgIcon, toolOf } from '../config.js';
 import { ICON, esc, DIAMOND } from './common.js';
 
@@ -132,7 +133,7 @@ export class Archive {
       const isOpen = this.open === s.id;
       const resumeBtn = s.resumable
         ? `<button class="icon-btn sm ar-resume" data-resume="${esc(s.id)}" title="Fortsetzen" ${this.busy ? 'disabled' : ''}>${this.busy === s.id ? '<span class="spin"></span>' : svgIcon(PLAY)}</button>`
-        : '';
+        : s.resumedBy ? '<span class="ar-cont" title="Bereits fortgesetzt – die neuere Session steht weiter oben">fortgesetzt</span>' : '';
       return `<div class="ar-row ${isOpen ? 'open' : ''}" data-sid="${esc(s.id)}">
           <span class="av sm" style="--c:${color}" title="${esc(tool?.name ?? s.toolId ?? '')}">${DIAMOND}</span>
           <div class="ar-main"><b>${esc(s.title || 'Ohne Titel')}</b>
@@ -150,7 +151,7 @@ export class Archive {
   eventsHtml(s) {
     const ev = this.events.get(s.id);
     const head = `<div class="ar-ev-head"><span>${s.eventCount ?? 0} Ereignisse${s.cwd ? ` · <em title="${esc(s.cwd)}">${esc(s.cwd)}</em>` : ''}</span>
-      ${s.resumable ? `<button class="btn sm" data-resume="${esc(s.id)}" ${this.busy ? 'disabled' : ''}>${svgIcon(PLAY)}Fortsetzen</button>` : ''}</div>`;
+      ${s.resumable ? `<button class="btn sm" data-resume="${esc(s.id)}" ${this.busy ? 'disabled' : ''}>${svgIcon(PLAY)}Fortsetzen</button>` : s.resumedBy ? '<span class="ar-cont">fortgesetzt</span>' : ''}</div>`;
     if (!ev) return `<div class="ar-events">${head}<div class="ar-none">lädt …</div></div>`;
     if (ev.error) return `<div class="ar-events">${head}<div class="ar-none">${esc(ev.error)}</div></div>`;
     const items = ev.list.map((e) => `<li>${svgIcon(eventIcon(e))}<span>${e.kind === 'tool' && e.tool ? `<b>${esc(e.tool)}</b> ` : ''}${esc(e.label ?? e.title ?? e.message ?? e.kind)}</span><time>${fmtClock(e.t)}</time></li>`).join('');
