@@ -85,7 +85,7 @@ export class Avatar {
     this.style = isMain ? avatarStyle(a) : null;
     // Person (Geschlecht, Frisur, Haut, Kleidung …) hängt nur an der Id; die Tool-/Typfarbe liegt auf Zubehör und Kragen
     const tool = new THREE.Color(agentColor(a));
-    const p = personOf(a);
+    const p = personOf(a, agentColor(a)); // Hemd meidet die Tool-/Typfarbe
     this.person = p;
     const skin = this.m(p.skin);
     const hair = this.m(p.hairColor, { roughness: 0.85 });
