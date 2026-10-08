@@ -20,8 +20,9 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
 button { font: inherit; color: inherit; }
 
-#stage, #labels { position: fixed; inset: 0; }
-#labels { pointer-events: none; }
+#stage, #labels, #screens { position: fixed; inset: 0; }
+#labels, #screens { pointer-events: none; }
+#screens { background: var(--bg); }
 #stage canvas { display: block; outline: none; }
 
 .ic { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
@@ -242,3 +243,45 @@ body.panel-off .toasts { right: 12px; }
 .banner.hidden { display: none; }
 .banner i { width: 7px; height: 7px; border-radius: 50%; background: #e5534b; animation: pulse 1.4s infinite; }
 @media (max-width: 760px) { .toasts { right: 12px; bottom: calc(34vh + 24px); } }
+
+/* ------------------------------------------------------------ v0.3: Leinwand (CSS3D, 960 × 540 px) */
+.screen {
+  width: 960px; height: 540px; background: #11151c; color: #dfe3ea; overflow: hidden; position: relative;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+}
+.screen.off .sc-body { display: none; }
+.sc-body { position: absolute; inset: 0; overflow: hidden; }
+.sc-frame { width: 100%; height: 100%; border: 0; background: #fff; pointer-events: none; }
+.sc-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; color: #4b5261; font-size: 30px; }
+.sc-logo { width: 84px; height: 84px; fill: #d97757; opacity: 0.35; }
+.sc-chip {
+  position: absolute; right: 18px; bottom: 16px; display: flex; align-items: center; gap: 10px; padding: 8px 18px; border-radius: 999px;
+  background: rgba(20, 24, 31, 0.82); border: 2px solid rgba(255,255,255,.12); color: #c9ced8; font-size: 24px; font-weight: 600; pointer-events: none;
+}
+.sc-chip.hidden { display: none; }
+.sc-chip i { display: none; width: 12px; height: 12px; border-radius: 50%; background: #d97757; }
+.sc-chip.unseen i { display: block; }
+.sc-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 40px; text-align: center; }
+.sc-card .ic { width: 96px; height: 96px; color: #6f7786; stroke-width: 1.4; margin-bottom: 10px; }
+.sc-card b { font-size: 40px; color: #e6e8ec; word-break: break-all; max-width: 100%; }
+.sc-card span { font-size: 26px; color: #8b929c; }
+.sc-card em { margin-top: 22px; display: inline-flex; align-items: center; gap: 10px; font-style: normal; font-size: 24px; color: #f1b39c; border: 2px solid rgba(217,119,87,.45); border-radius: 12px; padding: 8px 22px; }
+.sc-card em .ic { width: 26px; height: 26px; color: inherit; margin: 0; stroke-width: 2; }
+.sc-img { position: absolute; inset: 0; display: grid; place-items: center; background: repeating-conic-gradient(#1a1f27 0 25%, #11151c 0 50%) 0 0 / 40px 40px; }
+.sc-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.sc-text { position: absolute; inset: 0; background: #fbfaf8; color: #262a33; display: flex; flex-direction: column; }
+.sc-text-head { display: flex; align-items: center; gap: 12px; padding: 14px 28px; border-bottom: 2px solid #e3e5ea; font-size: 24px; font-weight: 600; color: #3a3f4b; background: #f3f1ec; }
+.sc-text-head .ic { width: 26px; height: 26px; color: #c45f3f; }
+.sc-md, .sc-code { flex: 1; overflow: hidden; padding: 20px 32px; font-size: 22px; line-height: 1.45; margin: 0; }
+.sc-md h1, .sc-md h2, .sc-md h3, .sc-md h4 { margin: 8px 0 6px; line-height: 1.25; color: #14171f; }
+.sc-md h1 { font-size: 36px; } .sc-md h2 { font-size: 30px; } .sc-md h3 { font-size: 26px; } .sc-md h4 { font-size: 23px; }
+.sc-md p { margin: 0 0 10px; }
+.sc-md ul, .sc-md ol { margin: 0 0 10px; padding-left: 32px; }
+.sc-md code, .sc-code { font-family: ui-monospace, 'SF Mono', Menlo, monospace; }
+.sc-md code { font-size: 20px; background: #eef0f4; padding: 0 6px; border-radius: 6px; }
+.sc-md pre { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 19px; background: #f3f4f7; border: 2px solid #e3e5ea; border-radius: 10px; padding: 12px 16px; white-space: pre-wrap; margin: 0 0 10px; }
+.sc-md blockquote { margin: 0 0 10px; padding: 4px 18px; border-left: 5px solid #d8dbe2; color: #555b66; }
+.sc-md hr { border: 0; border-top: 2px solid #e3e5ea; margin: 12px 0; }
+.sc-md a { color: #c45f3f; }
+.sc-code { white-space: pre-wrap; word-break: break-word; font-size: 19px; }
+body.playback #screens { filter: saturate(0.7) brightness(0.95); }

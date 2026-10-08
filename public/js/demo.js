@@ -19,6 +19,44 @@ const SUB_TYPES = [
 ];
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+// Beispiel-Artefakte je Demo-Session: HTML-Seite (Data-URL im iframe), Markdown-Karte (Inhalt inline), PDF-Hinweis
+const DEMO_HTML = `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>Speisekarte</title>
+<style>body{margin:0;font:15px/1.5 -apple-system,Segoe UI,sans-serif;background:#fbf7f1;color:#2b2622;padding:28px}
+h1{margin:0 0 4px;font-size:26px;color:#9a3b1f}p.sub{margin:0 0 18px;color:#7a6f66}table{border-collapse:collapse;width:100%;max-width:520px}
+td{padding:7px 0;border-bottom:1px solid #e8dfd3}td:last-child{text-align:right;font-weight:600}.tag{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;background:#e6f1e4;color:#2f6b3a;margin-left:6px}</style></head>
+<body><h1>Trattoria Demo</h1><p class="sub">Tageskarte · live aus der Bestell-App</p><table>
+<tr><td>Bruschetta al pomodoro</td><td>7,50 €</td></tr><tr><td>Tagliatelle al ragù <span class="tag">neu</span></td><td>14,90 €</td></tr>
+<tr><td>Risotto ai funghi</td><td>13,50 €</td></tr><tr><td>Tiramisù</td><td>6,80 €</td></tr></table></body></html>`;
+const DEMO_MD = `# Plan: Leinwand im Raum
+
+Stand: heute · **Status: in Arbeit**
+
+## Schritte
+- [x] CSS3DRenderer als zweite Ebene
+- [x] Leinwand an der Rückwand (4,8 × 2,7)
+- [ ] Chip „n Ergebnisse“
+- [ ] Wiedergabemodus
+
+> Nur Leinwände im Kamerabereich rendern, maximal 4 iframes.
+
+\`\`\`js
+world.syncScreens(store.artifactsUntil(t), agents, selected);
+\`\`\`
+`;
+function demoArtifacts(now) {
+  const html = `data:text/html;charset=utf-8,${encodeURIComponent(DEMO_HTML)}`;
+  return [
+    { id: 'art:demo-1', sessionId: 'm:demo-1', agentId: 'm:demo-1', t: now - 6 * 60e3, updatedAt: now - 6 * 60e3, kind: 'html', title: 'speisekarte.html',
+      url: html, path: '~/myProjects/restaurant-app/public/speisekarte.html', previewUrl: null, source: 'diff', seen: false, size: DEMO_HTML.length },
+    { id: 'art:demo-1b', sessionId: 'm:demo-1', agentId: 'm:demo-1', t: now - 15 * 60e3, updatedAt: now - 15 * 60e3, kind: 'web', title: 'localhost:3000',
+      url: 'http://localhost:3000/', path: null, previewUrl: null, source: 'port', seen: true, ended: true },
+    { id: 'art:demo-2', sessionId: 'm:demo-2', agentId: 'm:demo-2', t: now - 3 * 60e3, updatedAt: now - 3 * 60e3, kind: 'text', title: 'plan.md',
+      url: null, path: '~/myProjects/agentcity/docs/plan.md', previewUrl: null, source: 'diff', seen: false, size: DEMO_MD.length, content: DEMO_MD },
+    { id: 'art:demo-3', sessionId: 'm:demo-3', agentId: 'm:demo-3', t: now - 30 * 60e3, updatedAt: now - 30 * 60e3, kind: 'pdf', title: 'backtest-report.pdf',
+      url: null, path: '~/myProjects/ai-trade-app/out/backtest-report.pdf', previewUrl: null, source: 'text', seen: true, size: 184_320 },
+  ];
+}
+
 export class Demo {
   constructor(store) {
     this.store = store;
@@ -102,11 +140,11 @@ export class Demo {
     this.emit();
   }
 
-  emit() {
+  emit(artifacts = null) {
     const agents = [...this.agents.values()].map(({ nextAt, life, ...rest }) => ({ ...rest, events: [...rest.events] }));
-    this.store.applySnapshot({ now: Date.now(), agents });
+    this.store.applySnapshot({ now: Date.now(), agents, ...(artifacts ? { artifacts } : {}) });
   }
 
-  start() { this.emit(); this.timer = setInterval(() => this.step(), 700); }
+  start() { this.emit(demoArtifacts(Date.now())); this.timer = setInterval(() => this.step(), 700); }
   stop() { clearInterval(this.timer); }
 }

@@ -15,3 +15,6 @@ CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE IF NOT EXISTS meeting_messages (id TEXT PRIMARY KEY, meeting_id TEXT, role TEXT, agent_id TEXT, text TEXT,
   target_ids TEXT, t INTEGER);
 CREATE INDEX IF NOT EXISTS meeting_messages_meeting_t ON meeting_messages(meeting_id, t);
+CREATE TABLE IF NOT EXISTS artifacts (id TEXT PRIMARY KEY, session_id TEXT, agent_id TEXT, t INTEGER, updated_at INTEGER,
+  kind TEXT, title TEXT, url TEXT, path TEXT, preview_url TEXT, source TEXT, seen INTEGER DEFAULT 0, ended INTEGER DEFAULT 0, size INTEGER);
+CREATE INDEX IF NOT EXISTS artifacts_session ON artifacts(session_id, updated_at);

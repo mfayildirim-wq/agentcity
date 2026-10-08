@@ -41,6 +41,7 @@ export class ChatBar {
           <button data-view="chat" class="on" title="Chat">${svgIcon(ICON.prompt)}</button><button data-view="term" title="Terminal (Shell im Projektordner)">${svgIcon(ICON.terminal)}</button>
         </div>
         <button class="icon-btn sm c-kill" title="Shell beenden">${svgIcon(ICON.close)}</button>` : ''}
+        <button class="icon-btn sm c-results" title="Ergebnisse">${svgIcon(ICON.results)}<b></b></button>
         <button class="icon-btn sm c-toggle" title="Verlauf ein/aus">${svgIcon(ICON.chevDown)}</button>
       </div>
       <div class="c-log"></div>
@@ -58,6 +59,7 @@ export class ChatBar {
     this.nameEl = el.querySelector('.c-name');
     this.avEl = el.querySelector('.av');
     this.termEl = el.querySelector('.c-term');
+    this.resultsBtn = el.querySelector('.c-results'); // Umschalter für den Ergebnis-Frame (ui/results.js)
     el.querySelector('.c-kill')?.addEventListener('click', () => this.shell?.close());
     el.querySelector('.c-view')?.addEventListener('click', (e) => {
       const b = e.target.closest('[data-view]');

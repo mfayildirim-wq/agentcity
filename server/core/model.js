@@ -57,6 +57,33 @@ export function createEvent(agentId, kind, payload, t = Date.now()) {
   return { id: randomUUID(), agentId, t, kind, ...payload };
 }
 
+// ---------------------------------------------------------------- Artefakte (v0.3)
+// Dateiendung → Art der Vorschau: html (iframe), text (gerendert), image, pdf; alles andere ist „file“ (nur Hinweis)
+export const ARTIFACT_KINDS = ['web', 'html', 'text', 'image', 'pdf', 'file'];
+export const ARTIFACT_SOURCES = ['diff', 'text', 'terminal', 'port'];
+export const KIND_BY_EXT = {
+  '.html': 'html', '.htm': 'html',
+  '.md': 'text', '.txt': 'text', '.json': 'text', '.yaml': 'text', '.yml': 'text', '.csv': 'text', '.log': 'text',
+  '.js': 'text', '.mjs': 'text', '.cjs': 'text', '.ts': 'text', '.tsx': 'text', '.jsx': 'text', '.py': 'text', '.css': 'text',
+  '.sql': 'text', '.sh': 'text', '.go': 'text', '.rs': 'text', '.java': 'text', '.kt': 'text', '.swift': 'text', '.toml': 'text', '.xml': 'text',
+  '.png': 'image', '.jpg': 'image', '.jpeg': 'image', '.gif': 'image', '.svg': 'image', '.webp': 'image',
+  '.pdf': 'pdf',
+};
+export const extOf = (p) => { const m = /\.[^./\\]+$/.exec(String(p ?? '')); return m ? m[0].toLowerCase() : ''; };
+export const kindOfPath = (p) => KIND_BY_EXT[extOf(p)] ?? 'file';
+
+// Artefakt-Objekt (Server und Browser gleich); id wird aus Session + Pfad/URL abgeleitet (siehe artifacts.js)
+export function createArtifact(p) {
+  const t = p.t ?? Date.now();
+  return {
+    id: p.id ?? randomUUID(), sessionId: p.sessionId, agentId: p.agentId ?? null, t, updatedAt: p.updatedAt ?? t,
+    kind: ARTIFACT_KINDS.includes(p.kind) ? p.kind : 'file', title: p.title ?? null,
+    url: p.url ?? null, path: p.path ?? null, previewUrl: p.previewUrl ?? null,
+    source: ARTIFACT_SOURCES.includes(p.source) ? p.source : 'text', seen: !!p.seen, ended: !!p.ended,
+    ...(p.size != null ? { size: p.size } : {}),
+  };
+}
+
 export function createPermission(agentId, req) {
   return {
     id: randomUUID(), agentId, t: Date.now(), title: req.toolCall?.title ?? 'Berechtigung',
