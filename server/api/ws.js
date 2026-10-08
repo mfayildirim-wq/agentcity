@@ -4,10 +4,11 @@ import { BROADCAST_TYPES } from '../core/bus.js';
 import { isLocalHost, safeEqual, cookieToken } from './http.js';
 
 // Verbindungen ohne Origin (Nicht-Browser, z. B. Skripte mit dem Token) dürfen nur lesen.
-// history.resume startet einen Agenten-Prozess und zählt deshalb nicht dazu.
+// history.resume startet einen Agenten-Prozess und zählt deshalb nicht dazu; artifact.open (öffnet Dateien/URLs
+// auf dem Rechner) geht nur aus dem Browser.
 export function readOnlyAllowed(type) {
   if (type === 'history.resume') return false;
-  return type === 'chat.history' || type === 'pty.list' || type === 'fs.pickDir' || type.startsWith('history.');
+  return type === 'chat.history' || type === 'pty.list' || type === 'fs.pickDir' || type === 'artifact.list' || type.startsWith('history.');
 }
 
 // Nur Agent City-Seite selbst darf sich verbinden: Origin (Host + Port) muss dem Host-Header
@@ -49,6 +50,8 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
     type: 'snapshot',
     ...ctx.state.snapshot({ tools: ctx.registry?.publicList?.() ?? ctx.registry?.list?.() ?? [] }),
     ...(ctx.permissionsSnapshot ? { permissions: ctx.permissionsSnapshot() } : {}),
+    // Artefakte der laufenden Sessions (letzte 10 je Session)
+    ...(ctx.artifacts?.snapshot ? { artifacts: ctx.artifacts.snapshot() } : {}),
   });
 
   // Bus-Ereignisse an alle Browser weiterreichen

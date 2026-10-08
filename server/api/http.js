@@ -114,6 +114,10 @@ export function createHttpServer({ config, publicDir = path.join(APP_DIR, 'publi
     if (!safeEqual(cookieToken(req.headers.cookie), config.token)) { unauthorized(res); return; }
 
     if (routes[p]) { routes[p](req, res, url); return; }
+    // Präfix-Routen (Schlüssel endet mit „/“), z. B. /preview/
+    for (const [prefix, fn] of Object.entries(routes)) {
+      if (prefix.endsWith('/') && prefix.length > 1 && p.startsWith(prefix)) { fn(req, res, url); return; }
+    }
 
     for (const [prefix, dir] of Object.entries(VENDOR)) {
       if (p.startsWith(prefix)) { serveFile(res, dir, p.slice(prefix.length), {}, 'max-age=86400'); return; }
