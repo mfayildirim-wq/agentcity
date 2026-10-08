@@ -19,7 +19,7 @@ import ptyHandlers from '../server/api/handlers/pty.js';
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const TOOLS = { fake: { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] } };
 const registry = { get: (id) => TOOLS[id] ?? null, list: () => Object.values(TOOLS) };
-const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-pty-')));
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-pty-')));
 const TOKEN = '0123456789abcdef0123456789abcdef';
 
 after(() => fs.rmSync(cwd, { recursive: true, force: true }));
@@ -242,7 +242,7 @@ after(async () => {
 });
 
 function connect() {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `arena_token=${TOKEN}` } });
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `agentcity_token=${TOKEN}` } });
   const queue = [];
   const waiters = [];
   let seq = 0;

@@ -2,7 +2,7 @@
 import { STATIONS, agentColor, agentName, isBusy, svgIcon } from '../config.js';
 import { ICON, esc, renderText, fmtTime, DIAMOND } from './common.js';
 
-const HISTORY_KEY = 'arena.chatHistory';
+const HISTORY_KEY = 'agentcity.chatHistory';
 const MAX_HISTORY = 50;
 
 function loadHistory() {
@@ -13,13 +13,13 @@ function saveHistory(h) {
 }
 
 export class ChatBar {
-  constructor(el, { store, onSend, onCancel, onMode, onArenaMode, onDeselect, shell = null }) {
+  constructor(el, { store, onSend, onCancel, onMode, onCityMode, onDeselect, shell = null }) {
     this.el = el;
     this.store = store;
     this.onSend = onSend;
     this.onCancel = onCancel;
     this.onMode = onMode;
-    this.onArenaMode = onArenaMode;
+    this.onCityMode = onCityMode;
     this.onDeselect = onDeselect;
     this.agentId = null;
     this.history = loadHistory();
@@ -33,8 +33,8 @@ export class ChatBar {
     el.innerHTML = `<div class="chat">
       <div class="c-head">
         <span class="av sm"></span><span class="c-name"></span>
-        <div class="seg mini c-arena" title="Arena: Rückfragen bestätigen oder automatisch freigeben">
-          <button data-arena="confirm">Bestätigen</button><button data-arena="auto">Auto</button>
+        <div class="seg mini c-city" title="City-Modus: Rückfragen bestätigen oder automatisch freigeben">
+          <button data-city="confirm">Bestätigen</button><button data-city="auto">Auto</button>
         </div>
         <select class="c-mode" title="Modus des Tools"></select>
         ${shell ? `<div class="seg mini icons c-view" title="Chat ⇄ Terminal">
@@ -67,9 +67,9 @@ export class ChatBar {
     this.input.addEventListener('keydown', (e) => this.onKey(e));
     this.input.addEventListener('input', () => this.autosize());
     this.sendBtn.addEventListener('click', () => (this.busy ? this.onCancel(this.agentId) : this.send()));
-    el.querySelector('.c-arena').addEventListener('click', (e) => {
-      const b = e.target.closest('[data-arena]');
-      if (b && this.agent?.arenaMode !== b.dataset.arena) this.onArenaMode(this.agentId, b.dataset.arena);
+    el.querySelector('.c-city').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-city]');
+      if (b && this.agent?.cityMode !== b.dataset.city) this.onCityMode(this.agentId, b.dataset.city);
     });
     this.modeSel.addEventListener('change', () => this.onMode(this.agentId, this.modeSel.value));
     el.querySelector('.c-toggle').addEventListener('click', () => {
@@ -192,7 +192,7 @@ export class ChatBar {
       this.modeSel.innerHTML = modes.map((m) => `<option value="${esc(m.id)}" ${m.id === a.mode ? 'selected' : ''}>${esc(m.name)}</option>`).join('');
     }
     this.modeSel.classList.toggle('hidden', modes.length < 2);
-    for (const b of this.el.querySelectorAll('[data-arena]')) b.classList.toggle('on', b.dataset.arena === (a.arenaMode ?? 'confirm'));
+    for (const b of this.el.querySelectorAll('[data-city]')) b.classList.toggle('on', b.dataset.city === (a.cityMode ?? 'confirm'));
     const busy = isBusy(a);
     const dead = a.status === 'error';
     this.input.disabled = dead;

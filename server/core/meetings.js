@@ -21,7 +21,7 @@ export function cleanText(s, n = 40) {
   return t.length > n ? t.slice(0, n - 1).trimEnd() + '…' : t;
 }
 
-// steuerbarer Hauptagent (ACP-Session in der Arena)?
+// steuerbarer Hauptagent (ACP-Session in Agent City)?
 export function isControllable(agent, acp) {
   return !!(agent && agent.source === 'acp' && agent.kind === 'main' && (acp?.has ? acp.has(agent.id) : true));
 }
@@ -79,7 +79,7 @@ export function resolveTargets(text, people) {
 // Namen und Titel sind bereinigt und gekürzt. Beiträge der anderen stehen zwischen Markierungen mit einer
 // je Prompt zufälligen Grenze, jede Zeile mit „│ “ eingerückt – ein Agent kann so weder das Ende des Blocks
 // noch eine Nutzernachricht vortäuschen.
-// autoMode: ein Teilnehmer hat Arena-Modus „auto“ → zusätzliche Zeile im Kopf
+// autoMode: ein Teilnehmer hat City-Modus „auto“ → zusätzliche Zeile im Kopf
 export function buildMeetingPrompt({ title, self, others = [], context = [], text, autoMode = false, boundary = randomUUID().slice(0, 8) }) {
   const t = cleanText(title, MAX_TITLE);
   const names = others.map((n) => cleanText(n, 40)).filter(Boolean);
@@ -134,7 +134,7 @@ export function createMeetings({ state, bus, repo, acp, registry = null, emptyCl
     const unique = [...new Set(ids.filter((x) => typeof x === 'string' && x))];
     if (unique.length > MAX_PARTICIPANTS) throw new Error(`Höchstens ${MAX_PARTICIPANTS} Teilnehmer`);
     for (const id of unique) {
-      if (!isControllable(state.get(id), acp)) throw new Error('Nur steuerbare Agenten (Arena-Sessions) können teilnehmen');
+      if (!isControllable(state.get(id), acp)) throw new Error('Nur steuerbare Agenten (City-Sessions) können teilnehmen');
     }
     return unique;
   }
@@ -240,7 +240,7 @@ export function createMeetings({ state, bus, repo, acp, registry = null, emptyCl
       return { id, keys };
     });
     const targets = resolveTargets(text, people);
-    const autoMode = m.participantIds.some((id) => state.get(id)?.arenaMode === 'auto');
+    const autoMode = m.participantIds.some((id) => state.get(id)?.cityMode === 'auto');
     const t = Date.now();
 
     const sent = [];

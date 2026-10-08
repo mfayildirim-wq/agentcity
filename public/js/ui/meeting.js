@@ -233,7 +233,7 @@ export class MeetingBar {
     const title = meetingTitle(m);
     if (this.nameEl.textContent !== title) this.nameEl.textContent = title;
     this.renderPeople(m);
-    const auto = m.participantIds.some((id) => this.store.state.agents.get(id)?.arenaMode === 'auto');
+    const auto = m.participantIds.some((id) => this.store.state.agents.get(id)?.cityMode === 'auto');
     this.autoEl.classList.toggle('hidden', !auto);
     if (!this.menu.classList.contains('hidden') && (changes.has('agents') || changes.has('meetings'))) this.drawMenu();
     const atBottom = this.log.scrollHeight - this.log.scrollTop - this.log.clientHeight < 40;

@@ -24,7 +24,7 @@ const get = (port, p, headers = {}) => new Promise((resolve, reject) => {
 });
 
 test('E2E: Server-Zyklus mit Fake-Tools bis zum Shutdown', { timeout: 60_000 }, async () => {
-  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-e2e-')));
+  const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-e2e-')));
   const data = path.join(tmp, 'data');
   const proj = path.join(tmp, 'proj');
   fs.mkdirSync(data, { recursive: true });
@@ -35,7 +35,7 @@ test('E2E: Server-Zyklus mit Fake-Tools bis zum Shutdown', { timeout: 60_000 }, 
   ]));
   const nope = path.join(tmp, 'nope');
   const env = {
-    ...process.env, ARENA_DATA_DIR: data, PORT: '0', ARENA_OPEN: '',
+    ...process.env, AGENTCITY_DATA_DIR: data, PORT: '0', AGENTCITY_OPEN: '',
     CLAUDE_PROJECTS_DIR: path.join(nope, 'claude'), CODEX_SESSIONS_DIR: path.join(nope, 'codex'),
     OPENCODE_DB: path.join(nope, 'oc.db'), HERMES_DB: path.join(nope, 'h.db'),
   };
@@ -141,7 +141,7 @@ test('E2E: Server-Zyklus mit Fake-Tools bis zum Shutdown', { timeout: 60_000 }, 
     for (const t0 = Date.now(); kids.some(alive) && Date.now() - t0 < 5000;) await new Promise((r) => setTimeout(r, 50));
     assert.deepEqual(kids.filter(alive), [], 'keine Restprozesse');
     assert.equal(fs.existsSync(path.join(data, 'server.lock')), false, 'Sperrdatei weg');
-    const db = new DatabaseSync(path.join(data, 'arena.db'), { readOnly: true });
+    const db = new DatabaseSync(path.join(data, 'agentcity.db'), { readOnly: true });
     try {
       assert.equal(db.prepare('SELECT COUNT(*) AS n FROM sessions WHERE ended_at IS NULL').get().n, 0, 'alle Sessions beendet');
       assert.ok(db.prepare('SELECT COUNT(*) AS n FROM sessions').get().n >= 3);

@@ -95,7 +95,7 @@ export class AgentList {
     return `<div class="row ${a.id === this.selected ? 'sel' : ''} ${a.status}" data-id="${esc(a.id)}" style="--d:${depth}">
       <span class="av" style="--c:${agentColor(a)}">${a.kind === 'main' ? DIAMOND : ''}</span>
       <span class="row-main"><span class="row-name">${esc(agentName(a))}</span><span class="row-sub">${sub}</span></span>
-      ${a.adoptable && a.source === 'watch' ? `<button class="adopt-btn" data-adopt="${esc(a.id)}" title="Übernehmen – in der Arena fortsetzen" ${this.adopting.has(a.id) ? 'disabled' : ''}>${svgIcon(ICON.adopt)}</button>` : ''}
+      ${a.adoptable && a.source === 'watch' ? `<button class="adopt-btn" data-adopt="${esc(a.id)}" title="Übernehmen – in Agent City fortsetzen" ${this.adopting.has(a.id) ? 'disabled' : ''}>${svgIcon(ICON.adopt)}</button>` : ''}
       <span class="pulse" style="--c:${color}"></span>
     </div>`;
   }

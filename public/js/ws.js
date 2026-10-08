@@ -1,7 +1,7 @@
 // WebSocket-Verbindung zum Server: Anmeldung per Cookie, Wiederverbindung, Anfrage/Antwort
 const BACKOFF = [1000, 2000, 4000, 8000, 10000];
 
-// Anmeldung: Das HttpOnly-Cookie arena_token (gesetzt über den Login-Link aus dem Terminal) geht beim
+// Anmeldung: Das HttpOnly-Cookie agentcity_token (gesetzt über den Login-Link aus dem Terminal) geht beim
 // Upgrade mit; der Server schickt danach von selbst einen Snapshot. Fehlt es (4401), zeigt main.js einen
 // Hinweis – neu setzen lässt es sich nur über den Link.
 

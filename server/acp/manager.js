@@ -9,9 +9,9 @@ import { createAcpSession } from './session.js';
 import { createTerminalHandlers } from './terminal.js';
 import { withTimeout } from '../core/util.js';
 
-export const MODES = ['confirm', 'auto']; // Arena-Modus: Rückfragen bestätigen oder automatisch freigeben
+export const MODES = ['confirm', 'auto']; // City-Modus: Rückfragen bestätigen oder automatisch freigeben
 export const START_TIMEOUT_MS = 60_000;
-// Tools, deren Adapter session/load sicher können (weitere merkt sich die Arena aus initialize)
+// Tools, deren Adapter session/load sicher können (weitere merkt sich Agent City aus initialize)
 export const LOAD_CAPABLE = new Set(['claude', 'codex']);
 
 function checkDir(cwd) {
@@ -41,7 +41,7 @@ export function createSessionManager({
   }
 
   // Gemeinsamer Start: Agent anlegen, Prozess starten, initialize; danach new/load durch `open`
-  // adopted: bestehende DB-Session wird übernommen (gehört der Arena erst nach erfolgreichem Laden);
+  // adopted: bestehende DB-Session wird übernommen (gehört Agent City erst nach erfolgreichem Laden);
   // load: open lädt eine Session (Zeitlimit-Text); parentSessionId: Verweis beim Fortsetzen
   async function launch({ tool, cwd, mode, title, sessionId, acpSessionId = null, open, adopted = false, load = adopted, parentSessionId = null }) {
     const id = `a:${randomUUID()}`;
@@ -54,10 +54,10 @@ export function createSessionManager({
       id, toolId: tool.id, sessionId, acpSessionId, project, cwd, title: title || null, source: 'acp', controllable: true,
       status: 'thinking', mode: null,
     });
-    agent.arenaMode = mode === 'auto' ? 'auto' : 'confirm';
+    agent.cityMode = mode === 'auto' ? 'auto' : 'confirm';
     agent.launch = { toolId: tool.id, cwd, mode, title: title || null };
     agent.detail = 'startet …';
-    // ownsSession: DB-Session gehört dieser Arena-Session (bei Übernahme erst nach erfolgreichem Laden)
+    // ownsSession: DB-Session gehört dieser City-Session (bei Übernahme erst nach erfolgreichem Laden)
     const entryData = { client: null, launch: agent.launch, ownsSession: !adopted };
     // Agenten-Terminals (terminal/*) laufen über den PTY-Manager im Projektordner
     const terminal = createTerminalHandlers({ pty, cwd, agentId: id, onCreate: (t) => entryData.session?.terminalStarted(t) });
@@ -109,7 +109,7 @@ export function createSessionManager({
 
   async function createSession({ toolId, cwd, mode = 'confirm', title = null }) {
     const tool = toolOf(toolId);
-    if (mode && !MODES.includes(mode)) throw new Error(`Unbekannter Arena-Modus: ${mode}`);
+    if (mode && !MODES.includes(mode)) throw new Error(`Unbekannter City-Modus: ${mode}`);
     const dir = checkDir(cwd);
     return launch({
       tool, cwd: dir, mode, title, sessionId: randomUUID(),
@@ -139,7 +139,7 @@ export function createSessionManager({
       && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === w.sessionId || sid === external)));
     if (taken) {
       state.remove(w.id);
-      throw new Error('Session wird bereits in der Arena gesteuert');
+      throw new Error('Session wird bereits in Agent City gesteuert');
     }
     const id = await launch({
       tool, cwd: dir, mode: 'confirm', title: w.title, sessionId: w.sessionId, acpSessionId: external, adopted: true,
@@ -197,8 +197,8 @@ export function createSessionManager({
     // fehlgeschlagene Starts (Status error) blockieren nicht
     const taken = state.all().some((a) => a.source === 'acp' && a.status !== 'error'
       && [a.sessionId, a.acpSessionId].some((sid) => sid && (sid === external || sid === s.id)));
-    if (taken) throw new Error('Session wird bereits in der Arena gesteuert');
-    // Der Watcher zeigt auch die Sitzungsdatei einer gerade geschlossenen Arena-Session – deren Agent wird ersetzt.
+    if (taken) throw new Error('Session wird bereits in Agent City gesteuert');
+    // Der Watcher zeigt auch die Sitzungsdatei einer gerade geschlossenen City-Session – deren Agent wird ersetzt.
     // Eine externe Session (source watch), die gerade läuft, wird dagegen übernommen.
     const watched = state.all().filter((a) => a.source === 'watch' && [a.sessionId, a.acpSessionId].includes(external));
     const w = watched.find((a) => a.kind === 'main');
@@ -246,10 +246,10 @@ export function createSessionManager({
     return { ok: true };
   }
 
-  function setArenaMode(agentId, arenaMode) {
+  function setCityMode(agentId, cityMode) {
     const e = entry(agentId);
-    e.session.setArenaMode(arenaMode);
-    try { repo?.setSessionMode?.(e.session.get().sessionId, arenaMode); } catch { /* DB optional */ }
+    e.session.setCityMode(cityMode);
+    try { repo?.setSessionMode?.(e.session.get().sessionId, cityMode); } catch { /* DB optional */ }
     return { ok: true };
   }
 
@@ -273,5 +273,5 @@ export function createSessionManager({
     await Promise.all([...sessions.keys()].map((id) => close(id, 'ended').catch(() => {})));
   }
 
-  return { createSession, adopt, resume, canLoad, close, prompt, cancel, setMode, setArenaMode, answerPermission, get, has, stopAll, sessions };
+  return { createSession, adopt, resume, canLoad, close, prompt, cancel, setMode, setCityMode, answerPermission, get, has, stopAll, sessions };
 }

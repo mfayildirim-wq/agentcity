@@ -73,7 +73,7 @@ const chat = new ChatBar($('chat'), {
   onSend: (agentId, text) => request('session.prompt', { agentId, text }),
   onCancel: (agentId) => request('session.cancel', { agentId }).catch(() => {}),
   onMode: (agentId, modeId) => request('session.setMode', { agentId, modeId }).catch(() => {}),
-  onArenaMode: (agentId, arenaMode) => request('session.setArenaMode', { agentId, arenaMode }).catch(() => {}),
+  onCityMode: (agentId, cityMode) => request('session.setCityMode', { agentId, cityMode }).catch(() => {}),
   onDeselect: () => select(null),
   shell,
 });
@@ -245,7 +245,7 @@ async function sessionAction(kind, a) {
   } catch { /* Hinweis kam bereits als Toast */ }
 }
 
-if (params.has('debug')) window.__arena = { world, store };
+if (params.has('debug')) window.__agentcity = { world, store };
 
 // ---------------------------------------------------------------- Store → Oberfläche
 store.subscribe((s, changes) => {
@@ -320,7 +320,7 @@ const conn = createConnection({
     if (!demo) store.setConnection(st);
   },
 });
-if (window.__arena) window.__arena.conn = conn;
+if (window.__agentcity) window.__agentcity.conn = conn;
 
 // ---------------------------------------------------------------- Demo-Modus
 function setDemo(on) {

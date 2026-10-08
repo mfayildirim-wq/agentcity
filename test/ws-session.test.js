@@ -22,7 +22,7 @@ import { createRegistry } from '../server/agents/registry.js';
 
 const TOKEN = 'fedcba9876543210fedcba9876543210';
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
-const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-wss-')));
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-wss-')));
 fs.mkdirSync(path.join(cwd, 'sub-a'));
 fs.mkdirSync(path.join(cwd, 'sub-b'));
 fs.mkdirSync(path.join(cwd, '.versteckt'));
@@ -55,7 +55,7 @@ after(async () => {
 });
 
 function open() {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `arena_token=${TOKEN}` } });
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `agentcity_token=${TOKEN}` } });
   const queue = [];
   const waiters = [];
   let seq = 0;
@@ -139,9 +139,9 @@ test('session.create → agent.update; prompt → permission.request; answer →
   await assert.rejects(() => ws.request('chat.history', {}), /agentId/);
   await ws.request('session.setMode', { agentId, modeId: 'auto' });
   await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.mode === 'auto');
-  await ws.request('session.setArenaMode', { agentId, arenaMode: 'auto' });
-  await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.arenaMode === 'auto');
-  await assert.rejects(() => ws.request('session.setArenaMode', { agentId, arenaMode: 'x' }), /Arena-Modus/);
+  await ws.request('session.setCityMode', { agentId, cityMode: 'auto' });
+  await ws.next((m) => m.type === 'agent.update' && m.agent.id === agentId && m.agent.cityMode === 'auto');
+  await assert.rejects(() => ws.request('session.setCityMode', { agentId, cityMode: 'x' }), /City-Modus/);
 
   // langsamer Prompt + Abbruch
   await ws.request('session.prompt', { agentId, text: 'langsam' });

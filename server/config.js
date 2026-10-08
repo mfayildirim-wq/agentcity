@@ -7,8 +7,11 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { retentionDays } from './db/retention.js';
 
-export const ARENA_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export const DATA_DIR = process.env.ARENA_DATA_DIR || path.join(os.homedir(), '.agentcity');
+// Umgebungsvariable AGENTCITY_<name>, ersatzweise der alte Name ARENA_<name>
+export const envVar = (name, env = process.env) => env[`AGENTCITY_${name}`] ?? env[`ARENA_${name}`];
+
+export const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+export const DATA_DIR = envVar('DATA_DIR') || path.join(os.homedir(), '.agentcity');
 const LEGACY_DATA_DIR = path.join(os.homedir(), '.agent-arena'); // Datenordner bis v0.2 (Projekt hieß Agent Arena)
 export const PORT = Number(process.env.PORT || 4317);
 export const HOST = '127.0.0.1';
@@ -17,17 +20,23 @@ export const CLAUDE_PROJECTS_DIR = process.env.CLAUDE_PROJECTS_DIR || path.join(
 export const CODEX_SESSIONS_DIR = process.env.CODEX_SESSIONS_DIR || path.join(os.homedir(), '.codex', 'sessions');
 export const OPENCODE_DB = process.env.OPENCODE_DB || path.join(os.homedir(), '.local', 'share', 'opencode', 'opencode.db');
 export const HERMES_DB = process.env.HERMES_DB || path.join(os.homedir(), '.hermes', 'state.db');
-export const DB_PATH = process.env.ARENA_DB || path.join(DATA_DIR, 'arena.db');
+export const DB_PATH = envVar('DB') || path.join(DATA_DIR, 'agentcity.db');
 export const RETENTION_DAYS = retentionDays();
 
 // Datenordner anlegen; Modus 0700 auch bei einem bereits vorhandenen Ordner
 export function ensureDataDir(dir = DATA_DIR) {
   // einmalige Übernahme des alten Datenordners (Token, Tools, Datenbank)
-  if (dir === DATA_DIR && !process.env.ARENA_DATA_DIR && !fs.existsSync(dir) && fs.existsSync(LEGACY_DATA_DIR)) {
+  if (dir === DATA_DIR && !envVar('DATA_DIR') && !fs.existsSync(dir) && fs.existsSync(LEGACY_DATA_DIR)) {
     try { fs.renameSync(LEGACY_DATA_DIR, dir); } catch { /* dann frisch anlegen */ }
   }
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try { fs.chmodSync(dir, 0o700); } catch { /* fremder Ordner – Rechte bleiben */ }
+  // Datenbank bis v0.2 hieß arena.db
+  if (!fs.existsSync(path.join(dir, 'agentcity.db')) && fs.existsSync(path.join(dir, 'arena.db'))) {
+    for (const ext of ['', '-wal', '-shm']) {
+      try { fs.renameSync(path.join(dir, `arena.db${ext}`), path.join(dir, `agentcity.db${ext}`)); } catch { /* Datei fehlt */ }
+    }
+  }
   return dir;
 }
 
@@ -57,7 +66,7 @@ export function loadToken(dir = DATA_DIR) {
 export function loadConfig() {
   ensureDataDir();
   return {
-    arenaDir: ARENA_DIR, dataDir: DATA_DIR, port: PORT, host: HOST, windowMin: WINDOW_MIN,
+    appDir: APP_DIR, dataDir: DATA_DIR, port: PORT, host: HOST, windowMin: WINDOW_MIN,
     claudeProjectsDir: CLAUDE_PROJECTS_DIR, codexSessionsDir: CODEX_SESSIONS_DIR, opencodeDb: OPENCODE_DB, hermesDb: HERMES_DB,
     dbPath: DB_PATH, retentionDays: RETENTION_DAYS, token: loadToken(),
   };
@@ -91,16 +100,16 @@ export function processCommand(pid) {
   } catch { return null; }
 }
 
-// sieht die Befehlszeile nach einem Arena-Server aus?
-export const isArenaCommand = (cmd) => !!cmd && /agentcity|agent-arena|server\/(index|start)\.js/.test(cmd);
+// sieht die Befehlszeile nach einem Agent-City-Server aus?
+export const isAppCommand = (cmd) => !!cmd && /agentcity|agent-arena|server\/(index|start)\.js/.test(cmd);
 
 // Meldung bei belegter Sperrdatei (Zeilen ohne Einrückung)
 export function lockMessage(dir, pid, command = processCommand(pid)) {
   const file = path.join(dir, 'server.lock');
-  const lines = isArenaCommand(command)
+  const lines = isAppCommand(command)
     ? [`Agent City läuft bereits mit diesem Datenordner (${dir}, PID ${pid}).`]
-    : [`Die Sperrdatei ${file} verweist auf PID ${pid}, das ist aber offenbar kein Arena-Prozess${command ? ` (${command.slice(0, 80)})` : ''}.`];
-  lines.push(`Anderer Datenordner:  ARENA_DATA_DIR=/pfad npm start`);
+    : [`Die Sperrdatei ${file} verweist auf PID ${pid}, das ist aber offenbar kein Agent-City-Prozess${command ? ` (${command.slice(0, 80)})` : ''}.`];
+  lines.push(`Anderer Datenordner:  AGENTCITY_DATA_DIR=/pfad agentcity`);
   lines.push(`Läuft sicher kein Server mehr:  rm ${file.replace(os.homedir(), '~')}`);
   return lines;
 }

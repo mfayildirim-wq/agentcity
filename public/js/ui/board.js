@@ -91,7 +91,7 @@ export class Board {
     this.cols.addEventListener('dragstart', (e) => {
       const card = e.target.closest('[data-task]');
       if (!card) return;
-      e.dataTransfer.setData('text/x-arena-task', card.dataset.task);
+      e.dataTransfer.setData('text/x-agentcity-task', card.dataset.task);
       e.dataTransfer.effectAllowed = 'move';
       card.classList.add('dragging');
       this.dragId = card.dataset.task;
@@ -117,7 +117,7 @@ export class Board {
     });
     this.cols.addEventListener('drop', (e) => {
       const col = e.target.closest('[data-col]');
-      const id = e.dataTransfer.getData('text/x-arena-task') || this.dragId;
+      const id = e.dataTransfer.getData('text/x-agentcity-task') || this.dragId;
       col?.classList.remove('over');
       if (!col || !id) return;
       e.preventDefault();

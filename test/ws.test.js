@@ -63,7 +63,7 @@ function open(opts) {
   return ws;
 }
 
-const COOKIE = { Cookie: `arena_token=${TOKEN}` };
+const COOKIE = { Cookie: `agentcity_token=${TOKEN}` };
 
 test('HTTP: /api/health frei, / ohne Cookie → 401 ohne Token', async () => {
   const h = await get('/api/health');
@@ -77,7 +77,7 @@ test('HTTP: /api/health frei, / ohne Cookie → 401 ohne Token', async () => {
   assert.equal((await get('/index.html')).status, 401);
   assert.equal((await get('/js/main.js')).status, 401);
   assert.equal((await get('/vendor/three/build/three.module.js')).status, 401);
-  assert.equal((await get('/', { Cookie: 'arena_token=ffffffffffffffffffffffffffffffff' })).status, 401);
+  assert.equal((await get('/', { Cookie: 'agentcity_token=ffffffffffffffffffffffffffffffff' })).status, 401);
 });
 
 test('HTTP: /?t=falsch → 401 ohne Cookie; /?t=richtig → 302 + Set-Cookie', async () => {
@@ -89,7 +89,7 @@ test('HTTP: /?t=falsch → 401 ohne Cookie; /?t=richtig → 302 + Set-Cookie', a
   const ok = await get(`/?t=${TOKEN}`);
   assert.equal(ok.status, 302);
   assert.equal(ok.headers.location, '/');
-  assert.match(ok.headers['set-cookie'][0], new RegExp(`^arena_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`));
+  assert.match(ok.headers['set-cookie'][0], new RegExp(`^agentcity_token=${TOKEN}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`));
   // weitere Parameter bleiben erhalten
   assert.equal((await get(`/?demo&t=${TOKEN}`)).headers.location, '/?demo=');
 });
@@ -157,7 +157,7 @@ test('WS (Browser) → snapshot, Router, Fehler, Broadcast', async () => {
 });
 
 test('WS mit Cookie → snapshot ohne hello', async () => {
-  const ws = open({ headers: { Cookie: `arena_token=${TOKEN}` } });
+  const ws = open({ headers: { Cookie: `agentcity_token=${TOKEN}` } });
   const snap = await ws.next((m) => m.type === 'snapshot');
   assert.ok(snap.agents.length >= 1);
   ws.close();
@@ -165,7 +165,7 @@ test('WS mit Cookie → snapshot ohne hello', async () => {
 
 test('WS mit fremdem Origin oder anderem Port wird abgelehnt', async () => {
   for (const origin of ['http://evil.example', 'http://127.0.0.1:3000', 'http://localhost:3000']) {
-    const ws = open({ headers: { Origin: origin, Cookie: `arena_token=${TOKEN}` } });
+    const ws = open({ headers: { Origin: origin, Cookie: `agentcity_token=${TOKEN}` } });
     let opened = false;
     ws.on('open', () => { opened = true; });
     ws.on('error', () => {});
@@ -177,7 +177,7 @@ test('WS mit fremdem Origin oder anderem Port wird abgelehnt', async () => {
 
 test('WS mit eigenem Origin + Cookie → snapshot; ohne Cookie → 4401 sofort', async () => {
   const origin = `http://127.0.0.1:${port}`;
-  const ok = open({ headers: { Origin: origin, Cookie: `arena_token=${TOKEN}` } });
+  const ok = open({ headers: { Origin: origin, Cookie: `agentcity_token=${TOKEN}` } });
   assert.equal((await ok.next((m) => m.type === 'snapshot')).type, 'snapshot');
   // hello ohne Token liefert bei Cookie-Anmeldung einen frischen Snapshot
   ok.send(JSON.stringify({ type: 'hello' }));

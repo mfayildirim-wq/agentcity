@@ -3,7 +3,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { timingSafeEqual } from 'node:crypto';
-import { ARENA_DIR } from '../config.js';
+import { APP_DIR } from '../config.js';
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -31,7 +31,7 @@ export const safeEqual = (a, b) => {
 };
 
 export function cookieToken(header = '') {
-  const m = String(header).match(/(?:^|;\s*)arena_token=([0-9a-f]+)/);
+  const m = String(header).match(/(?:^|;\s*)(?:agentcity|arena)_token=([0-9a-f]+)/);
   return m ? m[1] : null;
 }
 
@@ -53,8 +53,8 @@ const LOGIN_PAGE = `<!doctype html>
 <body><main><h1>Agent City</h1><p>Bitte den Link aus dem Terminal öffnen<br><code>http://127.0.0.1:…/?t=…</code></p></main></body></html>
 `;
 
-export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'public'), routes = {} }) {
-  const nm = path.join(config.arenaDir ?? ARENA_DIR, 'node_modules');
+export function createHttpServer({ config, publicDir = path.join(APP_DIR, 'public'), routes = {} }) {
+  const nm = path.join(config.appDir ?? APP_DIR, 'node_modules');
   const VENDOR = {
     '/vendor/three/': path.join(nm, 'three'),
     '/vendor/xterm/': path.join(nm, '@xterm', 'xterm'),
@@ -104,7 +104,7 @@ export function createHttpServer({ config, publicDir = path.join(ARENA_DIR, 'pub
       const qs = url.searchParams.toString();
       res.writeHead(302, {
         Location: qs ? `/?${qs}` : '/',
-        'Set-Cookie': `arena_token=${config.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`,
+        'Set-Cookie': `agentcity_token=${config.token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=31536000`,
         'Cache-Control': 'no-store',
       });
       res.end();

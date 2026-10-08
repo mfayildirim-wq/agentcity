@@ -22,7 +22,7 @@ import meetingHandlers from '../server/api/handlers/meeting.js';
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const TOOLS = { fake: { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] } };
 const registry = { get: (id) => TOOLS[id] ?? null, list: () => Object.values(TOOLS), publicList: () => [] };
-const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-task-')));
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-task-')));
 
 let bus; let state; let repo; let manager; let tasks; let updates;
 beforeEach(() => {
@@ -182,7 +182,7 @@ test('WS: task.* und meeting.* über den Router', async () => {
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const wsPort = server.address().port;
-  const ws = new WebSocket(`ws://127.0.0.1:${wsPort}/ws`, { headers: { Origin: `http://127.0.0.1:${wsPort}`, Cookie: `arena_token=${TOKEN}` } });
+  const ws = new WebSocket(`ws://127.0.0.1:${wsPort}/ws`, { headers: { Origin: `http://127.0.0.1:${wsPort}`, Cookie: `agentcity_token=${TOKEN}` } });
   const queue = [];
   ws.on('message', (d) => queue.push(JSON.parse(d)));
   await new Promise((r) => ws.on('open', r));

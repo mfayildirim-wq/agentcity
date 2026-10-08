@@ -42,8 +42,8 @@ export default {
     return need(ctx).setMode(str(msg.agentId, 'agentId'), str(msg.modeId, 'modeId'));
   },
 
-  // Arena-Modus: 'confirm' = Rückfragen im Browser, 'auto' = automatisch freigeben
-  'session.setArenaMode'(ctx, msg) {
-    return need(ctx).setArenaMode(str(msg.agentId, 'agentId'), str(msg.arenaMode, 'arenaMode'));
+  // City-Modus: 'confirm' = Rückfragen im Browser, 'auto' = automatisch freigeben
+  'session.setCityMode'(ctx, msg) {
+    return need(ctx).setCityMode(str(msg.agentId, 'agentId'), str(msg.cityMode, 'cityMode'));
   },
 };

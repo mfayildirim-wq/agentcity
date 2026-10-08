@@ -81,9 +81,9 @@ export function createRepo(db) {
       WHERE ended_at IS NULL AND id NOT IN (SELECT value FROM json_each(?))`).run(JSON.stringify(skip)).changes;
   }
 
-  // Arena-Sessions (source acp) mit dieser ACP-/Tool-Session-Id: { active, endedAt } oder null.
-  // Der Watcher blendet deren Sitzungsdatei aus (sonst erschiene eine geschlossene Arena-Session als externe).
-  function arenaSessionFor(acpSessionId) {
+  // City-Sessions (source acp) mit dieser ACP-/Tool-Session-Id: { active, endedAt } oder null.
+  // Der Watcher blendet deren Sitzungsdatei aus (sonst erschiene eine geschlossene City-Session als externe).
+  function citySessionFor(acpSessionId) {
     if (!acpSessionId) return null;
     const r = q(`SELECT COUNT(*) AS n, SUM(ended_at IS NULL) AS open, MAX(ended_at) AS ended FROM sessions
       WHERE acp_session_id = ? AND source = 'acp'`).get(acpSessionId);
@@ -257,7 +257,7 @@ export function createRepo(db) {
 
   return {
     db, tx, upsertProject, createSession, ensureSession, updateSessionTitle, setSessionAcpId, setSessionMode, recentProjects,
-    getSession, endSession, reopenSession, endDangling, arenaSessionFor, meta,
+    getSession, endSession, reopenSession, endDangling, citySessionFor, meta,
     upsertAgent, getAgent, insertEvents, insertMessage, messagesForAgent, insertPermission, resolvePermission, tasks, meetings, history,
   };
 }

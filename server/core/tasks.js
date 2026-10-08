@@ -104,7 +104,7 @@ export function createTasks({ state, bus, repo, acp, meetings = null, doneKeepMs
     const t = need(taskId);
     if (t.status === 'done') throw new Error('Aufgabe ist erledigt');
     const agent = state.get(agentId);
-    if (!isControllable(agent, acp)) throw new Error('Nur steuerbare Agenten (Arena-Sessions) können Aufgaben übernehmen');
+    if (!isControllable(agent, acp)) throw new Error('Nur steuerbare Agenten (City-Sessions) können Aufgaben übernehmen');
     let early = null;
     let run;
     const origin = t.sourceMessageId ? meetings?.sourceOf?.(t.meetingId, t.sourceMessageId) ?? null : null;

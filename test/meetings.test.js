@@ -17,7 +17,7 @@ import {
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const TOOLS = { fake: { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] } };
 const registry = { get: (id) => TOOLS[id] ?? null, list: () => Object.values(TOOLS) };
-const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-meet-')));
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-meet-')));
 
 let bus; let state; let repo; let manager; let meetings; let seen;
 beforeEach(() => {

@@ -82,7 +82,7 @@ export class ByteRing {
 
 const cleanEnv = (extra = {}) => {
   const env = { ...process.env, TERM: 'xterm-256color', COLORTERM: 'truecolor', ...extra };
-  delete env.CLAUDECODE; // Shells der Arena sind keine verschachtelten Claude-Sessions
+  delete env.CLAUDECODE; // Shells von Agent City sind keine verschachtelten Claude-Sessions
   return env;
 };
 const clampSize = (v, def, max) => {

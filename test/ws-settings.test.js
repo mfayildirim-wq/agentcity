@@ -15,13 +15,13 @@ import { createRegistry } from '../server/agents/registry.js';
 
 const TOKEN = 'abcdefabcdefabcdefabcdefabcdef12';
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-wsset-'));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-wsset-'));
 let server; let port; let wsApi;
 
 before(async () => {
   const bus = createBus();
   const state = createState({ bus });
-  const registry = createRegistry({ dataDir, arenaDir: '/x/arena' });
+  const registry = createRegistry({ dataDir, appDir: '/x/agentcity' });
   const config = { token: TOKEN, port: 0 };
   server = createHttpServer({ config });
   wsApi = attachWs({ server, token: TOKEN, ctx: { state, bus, registry, config }, handlers: createHandlers(settingsHandlers) });
@@ -36,7 +36,7 @@ after(async () => {
 });
 
 function open() {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `arena_token=${TOKEN}` } });
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `agentcity_token=${TOKEN}` } });
   const queue = [];
   const waiters = [];
   let seq = 0;

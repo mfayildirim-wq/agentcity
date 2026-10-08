@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reconstruct, markerKind, bundleTools, sessionAt } from '../public/js/replay.js';
 
-const s1 = { id: 's1', toolId: 'claude', project: 'arena', cwd: '/x/arena', title: 'Eins', source: 'acp', startedAt: 1000, endedAt: 9000 };
+const s1 = { id: 's1', toolId: 'claude', project: 'agentcity', cwd: '/x/agentcity', title: 'Eins', source: 'acp', startedAt: 1000, endedAt: 9000 };
 const ev = (t, kind, p = {}) => ({ id: `${kind}-${t}`, agentId: 'a:1', t, kind, ...p });
 const data = new Map([['s1', {
   agents: [{ id: 'a:1', kind: 'main' }, { id: 'a:sub', kind: 'sub', parentId: 'a:1', description: 'Recherche', startedAt: 2600, endedAt: 2800 }],
@@ -41,7 +41,7 @@ test('Status je Zeitpunkt: denkt → Werkzeug → Erlaubnis → wartet → Fehle
   assert.equal(w.toolCount, 1);
   assert.equal(w.replay, true);
   assert.equal(w.controllable, false);
-  assert.equal(w.project, 'arena');
+  assert.equal(w.project, 'agentcity');
   assert.equal(w.title, 'Eins');
   assert.equal(main(3200).status, 'error');
   assert.equal(main(3200).error.message, 'kaputt');

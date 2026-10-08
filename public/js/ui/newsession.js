@@ -2,7 +2,7 @@
 import { svgIcon } from '../config.js';
 import { ICON, esc, DIAMOND } from './common.js';
 
-const LAST_KEY = 'arena.newSession';
+const LAST_KEY = 'agentcity.newSession';
 const load = () => { try { return JSON.parse(localStorage.getItem(LAST_KEY) || '{}'); } catch { return {}; } };
 const save = (v) => { try { localStorage.setItem(LAST_KEY, JSON.stringify(v)); } catch { /* kein Speicher */ } };
 
@@ -121,7 +121,7 @@ export class NewSessionDialog {
       </div>
       <div class="ns-dirs"></div>
       <div class="ns-row">
-        <div class="seg" role="radiogroup" aria-label="Arena-Modus">
+        <div class="seg" role="radiogroup" aria-label="City-Modus">
           <button data-mode="confirm" title="Werkzeuge erst nach Bestätigung">Bestätigen</button>
           <button data-mode="auto" title="Berechtigungen automatisch erteilen">Auto</button>
         </div>

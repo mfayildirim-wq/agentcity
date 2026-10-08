@@ -45,7 +45,7 @@ export class AcpClient extends EventEmitter {
   start() {
     if (this.proc) return this;
     const env = { ...process.env, ...this.tool.env, ...this.env };
-    delete env.CLAUDECODE; // von der Arena gestartete Agenten sind keine verschachtelten Sessions
+    delete env.CLAUDECODE; // von Agent City gestartete Agenten sind keine verschachtelten Sessions
     // eigene Prozessgruppe, damit stop() auch Kindprozesse des Adapters beendet
     const proc = spawn(this.tool.command, this.tool.args ?? [], { cwd: this.cwd, env, stdio: ['pipe', 'pipe', 'pipe'], detached: true });
     this.proc = proc;

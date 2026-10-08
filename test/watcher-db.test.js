@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createOpencodeWatcher } from '../server/watchers/opencode.js';
 import { createHermesWatcher } from '../server/watchers/hermes.js';
 
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'arena-wdb-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-wdb-'));
 
 function opencodeDb() {
   const file = path.join(tmp(), 'opencode.db');

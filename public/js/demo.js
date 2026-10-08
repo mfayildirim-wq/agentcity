@@ -1,4 +1,4 @@
-// Simulierte Sessions, damit die Arena auch ohne laufendes Claude Code vorführbar ist.
+// Simulierte Sessions, damit Agent City auch ohne laufendes Claude Code vorführbar ist.
 const TOOLS = [
   ['Read', 'library', ['server.ts', 'App.tsx', 'schema.prisma', 'README.md', 'auth.ts']],
   ['Grep', 'library', ['useOrders', 'TODO', 'createClient', 'export default']],
@@ -26,7 +26,7 @@ export class Demo {
     this.n = 0;
     const now = Date.now();
     this.addMain('restaurant-app', 'Bestellungen in Echtzeit synchronisieren', now - 22 * 60e3);
-    this.addMain('agentcity', '3D-Arena für Claude-Code-Agenten', now - 8 * 60e3);
+    this.addMain('agentcity', '3D-Stadt für KI-Coding-Agenten', now - 8 * 60e3);
     this.addMain('ai-trade-app', 'Backtesting-Dashboard', now - 41 * 60e3, 'waiting_user');
   }
 

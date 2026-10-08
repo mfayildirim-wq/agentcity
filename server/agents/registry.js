@@ -1,12 +1,12 @@
 // Tool-Registry: Standardliste (default-agents.json) + Nutzer-Einträge (<dataDir>/agents.json).
 // Nutzer-Einträge mit gleicher id überschreiben Felder des Standards; `disabled: true` blendet aus.
 // list() zeigt die Einträge wie konfiguriert (für Einstellungen), get() liefert startfertige Einträge
-// (`node` → laufender Node, `<arena>` → Arena-Ordner), publicList() ist ohne Befehl/Argumente/Umgebung.
+// (`node` → laufender Node, `<agentcity>` → Programmordner), publicList() ist ohne Befehl/Argumente/Umgebung.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ARENA_DIR } from '../config.js';
+import { APP_DIR } from '../config.js';
 import { AcpClient, rpcErrorMessage } from '../acp/client.js';
 import { withTimeout } from '../core/util.js';
 
@@ -15,31 +15,31 @@ export const AVATAR_STYLES = ['gem', 'cap', 'hoodie', 'scarf', 'visor'];
 export const TEST_TIMEOUT_MS = 10_000;
 const FIELDS = ['id', 'name', 'command', 'args', 'env', 'color', 'avatarStyle', 'disabled'];
 
-const subst = (s, arenaDir) => (typeof s === 'string' ? s.replaceAll('<arena>', arenaDir) : s);
-const unsubst = (s, arenaDir) => (typeof s === 'string' && arenaDir ? s.replaceAll(arenaDir, '<arena>') : s);
+const subst = (s, appDir) => (typeof s === 'string' ? s.replaceAll('<agentcity>', appDir).replaceAll('<arena>', appDir) : s) // <arena>: Einträge bis v0.2;
+const unsubst = (s, appDir) => (typeof s === 'string' && appDir ? s.replaceAll(appDir, '<agentcity>') : s);
 
-// Arena-Pfad vor dem Speichern wieder durch <arena> ersetzen (Datei bleibt verschiebbar)
-function unsubstAll(t, arenaDir) {
+// Programmpfad vor dem Speichern wieder durch <agentcity> ersetzen (Datei bleibt verschiebbar)
+function unsubstAll(t, appDir) {
   const out = { ...t };
-  if ('command' in out) out.command = unsubst(out.command, arenaDir);
-  if (Array.isArray(out.args)) out.args = out.args.map((a) => unsubst(a, arenaDir));
-  if (out.env && typeof out.env === 'object') out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, unsubst(v, arenaDir)]));
+  if ('command' in out) out.command = unsubst(out.command, appDir);
+  if (Array.isArray(out.args)) out.args = out.args.map((a) => unsubst(a, appDir));
+  if (out.env && typeof out.env === 'object') out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, unsubst(v, appDir)]));
   return out;
 }
 const same = (a, b) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 const DIFF_FIELDS = ['name', 'command', 'args', 'env', 'color', 'avatarStyle'];
 
-function substAll(t, arenaDir) {
+function substAll(t, appDir) {
   const out = { ...t };
-  if ('command' in out) out.command = subst(out.command, arenaDir);
-  if (Array.isArray(out.args)) out.args = out.args.map((a) => subst(a, arenaDir));
-  if (out.env && typeof out.env === 'object') out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, subst(v, arenaDir)]));
+  if ('command' in out) out.command = subst(out.command, appDir);
+  if (Array.isArray(out.args)) out.args = out.args.map((a) => subst(a, appDir));
+  if (out.env && typeof out.env === 'object') out.env = Object.fromEntries(Object.entries(out.env).map(([k, v]) => [k, subst(v, appDir)]));
   return out;
 }
 
-export function loadDefaults(arenaDir = ARENA_DIR) {
+export function loadDefaults(appDir = APP_DIR) {
   const list = JSON.parse(fs.readFileSync(DEFAULTS_FILE, 'utf8'));
-  return list.map((t) => substAll(t, arenaDir));
+  return list.map((t) => substAll(t, appDir));
 }
 
 // ---------------------------------------------------------------- Validierung
@@ -116,10 +116,10 @@ function runnable(t) {
 
 // ---------------------------------------------------------------- Registry
 export function createRegistry({
-  dataDir = null, arenaDir = ARENA_DIR, tools = null, testTimeoutMs = TEST_TIMEOUT_MS,
+  dataDir = null, appDir = APP_DIR, tools = null, testTimeoutMs = TEST_TIMEOUT_MS,
   clientFactory = (opts) => new AcpClient(opts),
 } = {}) {
-  const defaults = (tools ?? loadDefaults(arenaDir)).map((t) => substAll(t, arenaDir));
+  const defaults = (tools ?? loadDefaults(appDir)).map((t) => substAll(t, appDir));
   const defaultIds = new Set(defaults.map((t) => t.id));
   const file = dataDir ? path.join(dataDir, 'agents.json') : null;
   let user = [];
@@ -159,9 +159,9 @@ export function createRegistry({
     try { userMtime = fs.statSync(file).mtimeMs; } catch { userMtime = -1; }
   }
 
-  // zusammengeführte Einträge (wie konfiguriert, `<arena>` ersetzt)
+  // zusammengeführte Einträge (wie konfiguriert, `<agentcity>` ersetzt)
   function merged() {
-    const u = new Map(loadUser().map((x) => [x.id, substAll(x, arenaDir)]));
+    const u = new Map(loadUser().map((x) => [x.id, substAll(x, appDir)]));
     const out = [];
     for (const d of defaults) {
       const o = u.get(d.id);
@@ -199,7 +199,7 @@ export function createRegistry({
     let entry;
     if (def) {
       const prev = cur.find((x) => x.id === agent.id) ?? {};
-      const full = { ...def, ...substAll(prev, arenaDir), ...agent, id: def.id };
+      const full = { ...def, ...substAll(prev, appDir), ...agent, id: def.id };
       validateAgent(full);
       const c = clean(full);
       entry = { id: def.id };
@@ -208,10 +208,10 @@ export function createRegistry({
         if (!same(c[k], dv)) entry[k] = c[k];
       }
       if (c.disabled) entry.disabled = true;
-      entry = unsubstAll(entry, arenaDir);
+      entry = unsubstAll(entry, appDir);
     } else {
       validateAgent(agent);
-      entry = unsubstAll(clean(agent), arenaDir);
+      entry = unsubstAll(clean(agent), appDir);
     }
     const rest = cur.filter((x) => x.id !== entry.id);
     const keep = Object.keys(entry).length > 1 || !def; // Standard ohne Abweichung → kein Eintrag
@@ -232,7 +232,7 @@ export function createRegistry({
   // Startet das Tool kurz und fragt `initialize` ab
   async function test(agent) {
     validateAgent(agent);
-    const tool = runnable(substAll(clean(agent), arenaDir));
+    const tool = runnable(substAll(clean(agent), appDir));
     const client = clientFactory({ tool, cwd: os.homedir() });
     try {
       client.start();

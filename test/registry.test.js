@@ -7,12 +7,12 @@ import { fileURLToPath } from 'node:url';
 import { createRegistry, loadDefaults, validateAgent, isInstalled } from '../server/agents/registry.js';
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
-const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'arena-reg-'));
+const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-reg-'));
 
-test('Standardliste: fünf Tools, <arena> wird ersetzt', () => {
-  const defs = loadDefaults('/x/arena');
+test('Standardliste: fünf Tools, <agentcity> wird ersetzt', () => {
+  const defs = loadDefaults('/x/agentcity');
   assert.deepEqual(defs.map((d) => d.id), ['claude', 'codex', 'opencode', 'hermes', 'gemini']);
-  assert.equal(defs[0].args[0], '/x/arena/node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js');
+  assert.equal(defs[0].args[0], '/x/agentcity/node_modules/@agentclientprotocol/claude-agent-acp/dist/index.js');
   assert.equal(defs[1].avatarStyle, 'cap');
 });
 
@@ -23,7 +23,7 @@ test('Nutzer-Einträge überschreiben Standard, neue kommen dazu, disabled blend
     { id: 'gemini', disabled: true },
     { id: 'mein-tool', name: 'Mein Tool', command: 'node', args: [FAKE], color: '#abcdef' },
   ]));
-  const reg = createRegistry({ dataDir, arenaDir: '/x/arena' });
+  const reg = createRegistry({ dataDir, appDir: '/x/agentcity' });
   const ids = reg.list().map((t) => t.id);
   assert.deepEqual(ids, ['claude', 'codex', 'opencode', 'hermes', 'mein-tool']);
   const claude = reg.list().find((t) => t.id === 'claude');
@@ -45,7 +45,7 @@ test('Nutzer-Einträge überschreiben Standard, neue kommen dazu, disabled blend
 
 test('save/delete schreiben die Nutzer-Datei; Standard wird beim Löschen deaktiviert', () => {
   const dataDir = tmp();
-  const reg = createRegistry({ dataDir, arenaDir: '/x/arena' });
+  const reg = createRegistry({ dataDir, appDir: '/x/agentcity' });
   reg.save({ id: 'neu', name: 'Neu', command: 'node', args: [FAKE], env: { FOO: 'bar' }, color: '#123456', avatarStyle: 'visor' });
   const file = path.join(dataDir, 'agents.json');
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8'))[0].id, 'neu');
@@ -68,7 +68,7 @@ test('save/delete schreiben die Nutzer-Datei; Standard wird beim Löschen deakti
   reg.save({ ...codex, disabled: false });
   assert.ok(reg.get('codex'));
   // neue Registry liest die Datei
-  const again = createRegistry({ dataDir, arenaDir: '/x/arena' });
+  const again = createRegistry({ dataDir, appDir: '/x/agentcity' });
   assert.ok(again.get('codex'));
   assert.equal(again.get('neu'), null);
 });
@@ -85,7 +85,7 @@ test('Validierung', () => {
   assert.throws(() => validateAgent({ ...ok, env: { 'A B': '1' } }), /Umgebung/);
   assert.throws(() => validateAgent({ ...ok, env: { A: 'x\ny' } }), /Zeilenumbruch/);
   assert.throws(() => validateAgent({ ...ok, avatarStyle: 'hut' }), /Figurenstil/);
-  const reg = createRegistry({ dataDir: tmp(), arenaDir: '/x/arena' });
+  const reg = createRegistry({ dataDir: tmp(), appDir: '/x/agentcity' });
   assert.throws(() => reg.save({ ...ok, color: '#zzz' }), /Farbe/);
 });
 
@@ -98,7 +98,7 @@ test('isInstalled: PATH-Suche, node mit Skriptpfad', () => {
 });
 
 test('test() mit Fake-Agent ok, mit fehlendem Befehl Fehler, mit hängendem Agent Zeitlimit', async () => {
-  const reg = createRegistry({ dataDir: tmp(), arenaDir: '/x/arena', testTimeoutMs: 1500 });
+  const reg = createRegistry({ dataDir: tmp(), appDir: '/x/agentcity', testTimeoutMs: 1500 });
   const ok = await reg.test({ id: 'fake', name: 'Fake', command: 'node', args: [FAKE], color: '#888888' });
   assert.equal(ok.ok, true, ok.error);
   assert.equal(ok.info.agentInfo.name, 'fake-agent');
@@ -117,7 +117,7 @@ test('test(): hängender Prozess wird nach dem Zeitlimit beendet', async () => {
   let client;
   const { AcpClient } = await import('../server/acp/client.js');
   const reg = createRegistry({
-    dataDir: tmp(), arenaDir: '/x/arena', testTimeoutMs: 800,
+    dataDir: tmp(), appDir: '/x/agentcity', testTimeoutMs: 800,
     clientFactory: (opts) => (client = new AcpClient(opts)),
   });
   const res = await reg.test({ id: 'hang', name: 'H', command: 'node', args: [FAKE], env: { FAKE_HANG_INIT: '1' }, color: '#888888' });
@@ -126,11 +126,11 @@ test('test(): hängender Prozess wird nach dem Zeitlimit beendet', async () => {
   assert.throws(() => process.kill(client.proc.pid, 0), /ESRCH/);
 });
 
-test('Standard-Tool umschalten speichert nur Abweichungen, ohne absolute Arena-Pfade', () => {
+test('Standard-Tool umschalten speichert nur Abweichungen, ohne absolute Programmpfade', () => {
   const dataDir = tmp();
-  const arenaDir = '/x/arena';
+  const appDir = '/x/agentcity';
   const file = path.join(dataDir, 'agents.json');
-  const reg = createRegistry({ dataDir, arenaDir });
+  const reg = createRegistry({ dataDir, appDir });
   const read = () => (fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : []);
   reg.save({ id: 'claude', disabled: true });
   assert.deepEqual(read(), [{ id: 'claude', disabled: true }]);
@@ -138,20 +138,20 @@ test('Standard-Tool umschalten speichert nur Abweichungen, ohne absolute Arena-P
   reg.save({ id: 'claude', disabled: false });
   assert.deepEqual(read(), [], 'ohne Abweichung kein Eintrag');
   assert.equal(reg.list().find((t) => t.id === 'claude').modified, false);
-  // vollständiger Eintrag aus dem Formular (aufgelöste Pfade) → nur echte Abweichung, Pfade als <arena>
+  // vollständiger Eintrag aus dem Formular (aufgelöste Pfade) → nur echte Abweichung, Pfade als <agentcity>
   const codex = reg.list().find((t) => t.id === 'codex');
   reg.save({ ...codex, args: [...codex.args, '-c', 'model="gpt-5.5"'] });
-  assert.deepEqual(read(), [{ id: 'codex', args: ['<arena>/node_modules/@zed-industries/codex-acp/bin/codex-acp.js', '-c', 'model="gpt-5.5"'] }]);
+  assert.deepEqual(read(), [{ id: 'codex', args: ['<agentcity>/node_modules/@zed-industries/codex-acp/bin/codex-acp.js', '-c', 'model="gpt-5.5"'] }]);
   const again = reg.list().find((t) => t.id === 'codex');
   assert.equal(again.modified, true);
-  assert.equal(again.args[0], '/x/arena/node_modules/@zed-industries/codex-acp/bin/codex-acp.js');
+  assert.equal(again.args[0], '/x/agentcity/node_modules/@zed-industries/codex-acp/bin/codex-acp.js');
   // Umschalten behält die Abweichung
   reg.save({ id: 'codex', disabled: true });
   assert.deepEqual(read()[0].disabled, true);
   assert.equal(read()[0].args.length, 3);
-  // eigenes Tool mit Arena-Pfad
-  reg.save({ id: 'eigen', name: 'Eigen', command: 'node', args: ['/x/arena/tool.js'], color: '#123456' }, { isNew: true });
-  assert.equal(read().find((x) => x.id === 'eigen').args[0], '<arena>/tool.js');
+  // eigenes Tool mit Programmpfad
+  reg.save({ id: 'eigen', name: 'Eigen', command: 'node', args: ['/x/agentcity/tool.js'], color: '#123456' }, { isNew: true });
+  assert.equal(read().find((x) => x.id === 'eigen').args[0], '<agentcity>/tool.js');
   assert.throws(() => reg.save({ id: 'eigen', name: 'E', command: 'node', args: [], color: '#123456' }, { isNew: true }), /bereits vergeben/);
   assert.throws(() => reg.save({ id: 'codex', name: 'C', command: 'node', args: [], color: '#123456' }, { isNew: true }), /bereits vergeben/);
   assert.ok(!fs.readdirSync(dataDir).some((f) => f.endsWith('.tmp')), 'keine tmp-Datei übrig');

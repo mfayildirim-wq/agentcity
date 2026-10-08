@@ -69,7 +69,7 @@ test('state.upsert löst Bus-Ereignis aus, remove ebenfalls', () => {
 });
 
 test('loadToken erzeugt 32 Hex-Zeichen mit Modus 0600 und liest es wieder', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-tok-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-tok-'));
   const t1 = loadToken(dir);
   assert.match(t1, /^[0-9a-f]{32}$/);
   assert.equal(fs.statSync(path.join(dir, 'token')).mode & 0o777, 0o600);

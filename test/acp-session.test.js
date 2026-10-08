@@ -18,7 +18,7 @@ import { startWatchers } from '../server/watchers/index.js';
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const TOOLS = { fake: { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] } };
 const registry = { get: (id) => TOOLS[id] ?? null, list: () => Object.values(TOOLS) };
-const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-sess-')));
+const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-sess-')));
 
 let bus; let state; let repo; let manager; let seen;
 beforeEach(() => {
@@ -57,7 +57,7 @@ test('createSession: Agent mit Ids, Modi und DB-Zeile', async () => {
   assert.ok(a.sessionId && a.sessionId !== a.acpSessionId);
   assert.equal(a.status, 'waiting_user');
   assert.equal(a.mode, 'confirm');
-  assert.equal(a.arenaMode, 'confirm');
+  assert.equal(a.cityMode, 'confirm');
   assert.deepEqual(a.modes.map((m) => m.id), ['confirm', 'auto']);
   assert.equal(a.project, path.basename(cwd));
   assert.deepEqual(a.launch, { toolId: 'fake', cwd, mode: 'confirm', title: 'Test' });
@@ -163,7 +163,7 @@ test('Immer erlauben merkt sich das Werkzeug; Auto-Modus bestätigt sofort', asy
   assert.ok(events('permission', id).some((e) => e.auto && e.optionId === 'allow'));
 
   const auto = await manager.createSession({ toolId: 'fake', cwd, mode: 'auto' });
-  assert.equal(state.get(auto).arenaMode, 'auto');
+  assert.equal(state.get(auto).cityMode, 'auto');
   assert.equal(state.get(auto).mode, 'confirm', 'Tool-Modus bleibt unberührt');
   assert.equal((await manager.prompt(auto, 'hi')).stopReason, 'end_turn');
   assert.equal(state.get(auto).plan.length, 2);
@@ -185,7 +185,7 @@ test('setMode und paralleler Prompt wird abgelehnt', async () => {
   const id = await manager.createSession({ toolId: 'fake', cwd });
   await manager.setMode(id, 'auto');
   assert.equal(state.get(id).mode, 'auto');
-  assert.equal(state.get(id).arenaMode, 'confirm');
+  assert.equal(state.get(id).cityMode, 'confirm');
   const p = manager.prompt(id, 'langsam');
   await assert.rejects(() => manager.prompt(id, 'zweiter'), /arbeitet noch/);
   await manager.cancel(id);
@@ -210,7 +210,7 @@ test('Fehlerfälle beim Start', async () => {
   await assert.rejects(() => manager.createSession({ toolId: 'gibtsnicht', cwd }), /Unbekanntes Tool/);
   await assert.rejects(() => manager.createSession({ toolId: 'fake', cwd: 'relativ' }), /absolut/);
   await assert.rejects(() => manager.createSession({ toolId: 'fake', cwd: path.join(cwd, 'fehlt') }), /nicht gefunden/);
-  TOOLS.kaputt = { id: 'kaputt', name: 'Kaputt', command: 'gibt-es-nicht-arena', args: [] };
+  TOOLS.kaputt = { id: 'kaputt', name: 'Kaputt', command: 'gibt-es-nicht-agentcity', args: [] };
   await assert.rejects(() => manager.createSession({ toolId: 'kaputt', cwd }), /konnte nicht starten/);
   const failed = state.all().find((a) => a.toolId === 'kaputt');
   assert.equal(failed.status, 'error');
@@ -250,17 +250,17 @@ test('Hilfsfunktionen: Subagent-Erkennung und Details', () => {
   assert.equal(toolDetail(null), null);
 });
 
-test('Tool-Modus „auto“ gibt nichts frei; Arena-Modus auto beantwortet offene Rückfragen', async () => {
+test('Tool-Modus „auto“ gibt nichts frei; City-Modus auto beantwortet offene Rückfragen', async () => {
   const id = await manager.createSession({ toolId: 'fake', cwd });
   await manager.setMode(id, 'auto');
   const done = manager.prompt(id, 'hi');
   await waitFor(() => state.permissions.size === 1);
-  manager.setArenaMode(id, 'auto');
+  manager.setCityMode(id, 'auto');
   assert.equal(state.permissions.size, 0);
   assert.equal((await done).stopReason, 'end_turn');
   assert.equal(state.get(id).plan.length, 2);
   assert.equal(repo.getSession(state.get(id).sessionId).mode, 'auto');
-  assert.throws(() => manager.setArenaMode(id, 'quatsch'), /Arena-Modus/);
+  assert.throws(() => manager.setCityMode(id, 'quatsch'), /City-Modus/);
 });
 
 test('Unbekannte und bereits beantwortete Permission-Id', async () => {
@@ -319,7 +319,7 @@ test('Updates nach close legen den Agenten nicht neu an', async () => {
   client.stop = async () => {};
   client.stderrTail = () => '';
   const agent = createAgent({ id: 'a:stub', toolId: 'fake', sessionId: 's1', project: 'p', cwd });
-  agent.arenaMode = 'confirm';
+  agent.cityMode = 'confirm';
   state.upsert(agent);
   const s = createAcpSession({ agent, client, state, bus, repo });
   await s.close();
@@ -385,14 +385,14 @@ test('Übernahme während eines Watcher-Ticks erzeugt keinen Doppel-Agenten', as
   assert.equal(state.all().filter((a) => a.sessionId === 'ext-9').length, 1);
   // zweite Übernahme derselben Session wird abgelehnt
   state.upsert({ ...ext });
-  await assert.rejects(() => manager.adopt(ext.id), /bereits in der Arena/);
+  await assert.rejects(() => manager.adopt(ext.id), /bereits in Agent City/);
   assert.equal(state.get(ext.id), undefined);
   assert.equal(state.get(id).controllable, true);
   w.stop();
 });
 
 test('Übernahme-Fehlschlag: externe Session wird nicht als beendet markiert', async () => {
-  TOOLS.kaputt = { id: 'kaputt', name: 'Kaputt', command: 'gibt-es-nicht-arena', args: [] };
+  TOOLS.kaputt = { id: 'kaputt', name: 'Kaputt', command: 'gibt-es-nicht-agentcity', args: [] };
   repo.createSession({ id: 'ext-10', toolId: 'kaputt', acpSessionId: 'ext-10', projectId: null, title: 'extern', source: 'watch', mode: null });
   const w = createAgent({ id: 'w:kaputt:ext-10', toolId: 'kaputt', sessionId: 'ext-10', acpSessionId: 'ext-10', project: 'p', cwd, source: 'watch', controllable: false });
   state.upsert(w);

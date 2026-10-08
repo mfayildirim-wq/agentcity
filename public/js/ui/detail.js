@@ -120,7 +120,7 @@ export class DetailCard {
           <div class="d-name">${esc(agentName(a))}</div>
           <div class="d-meta">${a.kind === 'main' ? (acp ? 'Session' : 'Hauptagent') : esc(a.agentType || 'Subagent')} · ${esc(a.project)}</div>
         </div>
-        ${a.adoptable && a.source === 'watch' ? `<button class="icon-btn sm adopt ${this.busyAction === a.id ? 'busy' : ''}" data-action="adopt" title="Übernehmen – Session in der Arena fortsetzen" ${this.busyAction === a.id ? 'disabled' : ''}>${svgIcon(ICON.adopt)}</button>` : ''}
+        ${a.adoptable && a.source === 'watch' ? `<button class="icon-btn sm adopt ${this.busyAction === a.id ? 'busy' : ''}" data-action="adopt" title="Übernehmen – Session in Agent City fortsetzen" ${this.busyAction === a.id ? 'disabled' : ''}>${svgIcon(ICON.adopt)}</button>` : ''}
         ${acp ? `<button class="icon-btn sm" data-action="terminal" title="Terminal (Shell im Projektordner)">${svgIcon(ICON.terminal)}</button>` : ''}
         ${acp ? `<button class="icon-btn sm ${this.confirmClose === a.id ? 'danger' : ''}" data-action="end" title="${this.confirmClose === a.id ? 'Nochmal klicken: Session beenden' : 'Session beenden'}">${svgIcon(ICON.power)}</button>` : ''}
         <button class="icon-btn sm" data-close title="Schließen">${svgIcon(ICON.close)}</button>

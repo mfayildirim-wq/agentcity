@@ -9,8 +9,8 @@ import { resolveInside } from '../server/acp/fs.js';
 
 const FAKE = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fake-agent.js');
 const tool = { id: 'fake', name: 'Fake', command: process.execPath, args: [FAKE] };
-const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-acp-')));
-const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-out-')));
+const tmp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-acp-')));
+const outside = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-out-')));
 fs.writeFileSync(path.join(tmp, 'a.txt'), 'eins\nzwei\ndrei\n');
 fs.writeFileSync(path.join(outside, 'geheim.txt'), 'geheim');
 fs.symlinkSync(path.join(outside, 'geheim.txt'), path.join(tmp, 'link.txt'));
@@ -131,7 +131,7 @@ test('Prozess-Ende → exit mit stderrTail, offener Prompt scheitert', async () 
 });
 
 test('Unbekannter Befehl → exit mit Fehler', async () => {
-  const c = new AcpClient({ tool: { id: 'x', command: 'gibt-es-nicht-arena', args: [] }, cwd: tmp });
+  const c = new AcpClient({ tool: { id: 'x', command: 'gibt-es-nicht-agentcity', args: [] }, cwd: tmp });
   clients.push(c);
   const exited = new Promise((r) => c.once('exit', r));
   c.start();

@@ -1,6 +1,7 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --no-warnings=ExperimentalWarning
 // Einstieg: prüft die Node-Version (node:sqlite ohne Flag ab 22.13), setzt restriktive Dateirechte und lädt dann
 // den eigentlichen Server. Statische Importe von node:sqlite würden auf älteren Versionen vor der Prüfung scheitern.
+import { realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const MIN_NODE = [22, 13];
@@ -10,7 +11,8 @@ export function nodeVersionOk(version = process.versions.node, min = MIN_NODE) {
   return major > min[0] || (major === min[0] && minor >= min[1]);
 }
 
-const isMain = !!process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url;
+// realpath: als Befehl `agentcity` (npm link) zeigt argv[1] auf einen Symlink
+const isMain = !!process.argv[1] && pathToFileURL(realpathSync(process.argv[1])).href === import.meta.url;
 if (isMain) {
   if (!nodeVersionOk()) {
     console.error(`\n  Agent City braucht Node.js ${MIN_NODE.join('.')} oder neuer (gefunden: ${process.versions.node}).`);

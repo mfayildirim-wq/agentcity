@@ -12,7 +12,7 @@ import { createAgent } from '../server/core/model.js';
 const pad = (n) => String(n).padStart(2, '0');
 const ID = '01a1174f-3d85-7762-bf33-e203e6f895fe';
 
-function fixture(lines, id = ID, root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-codex-'))) {
+function fixture(lines, id = ID, root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-codex-'))) {
   const d = new Date();
   const dir = path.join(root, String(d.getFullYear()), pad(d.getMonth() + 1), pad(d.getDate()));
   fs.mkdirSync(dir, { recursive: true });
@@ -38,7 +38,7 @@ const lines = [
 ];
 
 test('Codex-Watcher: session_meta, Werkzeug, Text, Tokens', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-codex-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-codex-'));
   const w = createCodexWatcher({ root, windowMs: 60 * 60_000 });
   assert.equal(w.adoptable, true);
   await w.scan(); // erster Scan (leer): baut nur Zustand auf

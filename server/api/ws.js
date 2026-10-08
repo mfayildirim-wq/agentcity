@@ -10,7 +10,7 @@ export function readOnlyAllowed(type) {
   return type === 'chat.history' || type === 'pty.list' || type === 'fs.pickDir' || type.startsWith('history.');
 }
 
-// Nur die Arena-Seite selbst darf sich verbinden: Origin (Host + Port) muss dem Host-Header
+// Nur Agent City-Seite selbst darf sich verbinden: Origin (Host + Port) muss dem Host-Header
 // entsprechen. Ohne Origin (Nicht-Browser) entscheidet allein das Token.
 export function originAllowed(origin, hostHeader) {
   if (!origin) return true;

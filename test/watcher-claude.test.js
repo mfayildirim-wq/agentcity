@@ -9,7 +9,7 @@ import { createBus } from '../server/core/bus.js';
 import { createState } from '../server/core/state.js';
 import { createAgent } from '../server/core/model.js';
 
-function makeFixture(root = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-claude-'))) {
+function makeFixture(root = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-claude-'))) {
   const pdir = path.join(root, '-Users-x-myProjects-demo');
   const sid = 'sess-1';
   fs.mkdirSync(path.join(pdir, sid, 'subagents'), { recursive: true });
@@ -83,7 +83,7 @@ test('startWatchers schreibt in den Zustand und überspringt ACP-Sessions', asyn
 
 test('Ereignisse: stabile Ids, neue werden genau einmal gemeldet, eindeutig nach Neuschreiben', async () => {
   // erster Scan (leer) baut nur Zustand auf; danach entstehende Sessions melden ihre Ereignisse
-  const root0 = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-claude-'));
+  const root0 = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-claude-'));
   const w = createClaudeWatcher({ root: root0, windowMs: 60 * 60_000 });
   await w.scan();
   const { root, sid } = makeFixture(root0);

@@ -139,7 +139,7 @@ class FakeAgent {
     if (input.includes('subagent')) {
       await this.update(sessionId, {
         sessionUpdate: 'tool_call', toolCallId: 'sub1', title: 'Task: Recherche', kind: 'other', status: 'in_progress',
-        rawInput: { description: 'Recherche', subagent_type: 'Explore' }, _meta: { arena: { subagent: true } },
+        rawInput: { description: 'Recherche', subagent_type: 'Explore' }, _meta: { agentcity: { subagent: true } },
       });
       await this.update(sessionId, {
         sessionUpdate: 'tool_call', toolCallId: 'sub1-read', title: 'Read README.md', kind: 'read', status: 'completed',

@@ -142,8 +142,8 @@ test('Datenbankdateien 0600 (auch -wal/-shm), fehlende Dateien ohne Fehler', asy
   const osm = await import('node:os');
   const pathm = await import('node:path');
   const { secureDbFiles } = await import('../server/config.js');
-  const dir = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 'arena-perm-'));
-  const file = pathm.join(dir, 'arena.db');
+  const dir = fsm.mkdtempSync(pathm.join(osm.tmpdir(), 'agentcity-perm-'));
+  const file = pathm.join(dir, 'agentcity.db');
   const db = openDb(file);
   db.exec('CREATE TABLE IF NOT EXISTS x (a)'); db.exec('INSERT INTO x VALUES (1)');
   const files = [file, `${file}-wal`, `${file}-shm`].filter((f) => fsm.existsSync(f));

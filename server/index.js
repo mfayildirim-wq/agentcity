@@ -1,4 +1,4 @@
-// Agent City v2 (gestartet über start.js) – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
+// Agent City (gestartet über start.js) – Start: Konfig → DB → Repo → Registry → Zustand/Bus → Recorder → Watcher → HTTP + WS
 import { loadConfig, acquireLock, lockMessage, secureDbFiles } from './config.js';
 import { openDb } from './db/migrate.js';
 import { startRetention } from './db/retention.js';
@@ -36,11 +36,11 @@ if (!lock.ok) {
 }
 const db = openDb(config.dbPath);
 secureDbFiles(config.dbPath);
-// Aufräumregel: beim Start und danach täglich (ARENA_RETENTION_DAYS)
+// Aufräumregel: beim Start und danach täglich (AGENTCITY_RETENTION_DAYS)
 const retention = startRetention(db, { days: config.retentionDays });
 const repo = createRepo(db);
 // Tool-Registry: Standardliste + ~/.agentcity/agents.json
-const registry = createRegistry({ dataDir: config.dataDir, arenaDir: config.arenaDir });
+const registry = createRegistry({ dataDir: config.dataDir, appDir: config.appDir });
 const bus = createBus();
 const state = createState({ bus });
 // Terminals: Nutzer-Shells und Agenten-Terminals (node-pty)
@@ -66,7 +66,7 @@ const ws = attachWs({
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     console.error(`\n  Port ${config.port} ist schon belegt – läuft Agent City bereits? Dann den Link aus dessen Terminal öffnen.`);
-    console.error(`  Beenden:  kill $(lsof -ti tcp:${config.port})   ·   Anderer Port:  PORT=4318 npm start\n`);
+    console.error(`  Beenden:  kill $(lsof -ti tcp:${config.port})   ·   Anderer Port:  PORT=4318 agentcity\n`);
     lock.release();
     process.exit(1);
   }
@@ -84,7 +84,7 @@ server.listen(config.port, config.host, () => {
   console.log(`\n  Agent City läuft – im Browser öffnen:  ${url}`);
   console.log(`  Quelle: ${config.claudeProjectsDir}  ·  ${n} Agent(en) im Zeitfenster von ${config.windowMin} min`);
   console.log(`  Daten:  ${config.dataDir}\n`);
-  if (process.env.ARENA_OPEN === '1' && process.platform === 'darwin') {
+  if ((process.env.AGENTCITY_OPEN ?? process.env.ARENA_OPEN) === '1' && process.platform === 'darwin') {
     try { spawn('open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); } catch { /* egal */ }
   }
 });

@@ -29,7 +29,7 @@ export function toolDetail(raw) {
 // Werkzeugaufruf, der einen Subagenten startet?
 export function isSubagentCall(u) {
   const name = u._meta?.claudeCode?.toolName;
-  return !!(u._meta?.arena?.subagent || name === 'Agent' || name === 'Task'
+  return !!(u._meta?.agentcity?.subagent || name === 'Agent' || name === 'Task'
     || /^(Task|Agent):/.test(u.title ?? '')
     || (u.rawInput && typeof u.rawInput === 'object' && u.rawInput.subagent_type));
 }
@@ -392,8 +392,8 @@ export function createAcpSession({
     perm.toolId = get().toolId;
     try { repo?.insertPermission?.(perm, sessionId()); } catch (err) { console.error('[acp] Berechtigung', err.message); }
 
-    // Auto-Freigabe nur aus dem Arena-Modus, nie aus dem Modus des Tools
-    const auto = get().arenaMode === 'auto' || alwaysAllow.has(key);
+    // Auto-Freigabe nur aus dem City-Modus, nie aus dem Modus des Tools
+    const auto = get().cityMode === 'auto' || alwaysAllow.has(key);
     const allow = auto && firstAllow(req.options ?? []);
     if (allow) {
       resolve({ outcome: 'selected', optionId: allow.optionId });
@@ -496,11 +496,11 @@ export function createAcpSession({
     if (busy) await client.cancel();
   }
 
-  function setArenaMode(arenaMode) {
-    if (arenaMode !== 'confirm' && arenaMode !== 'auto') throw new Error(`Unbekannter Arena-Modus: ${arenaMode}`);
-    patch({ arenaMode });
+  function setCityMode(cityMode) {
+    if (cityMode !== 'confirm' && cityMode !== 'auto') throw new Error(`Unbekannter City-Modus: ${cityMode}`);
+    patch({ cityMode });
     // offene Rückfragen sofort freigeben, wenn auf Auto umgestellt wird
-    if (arenaMode === 'auto') {
+    if (cityMode === 'auto') {
       for (const [pid, p] of [...pending]) {
         const allow = firstAllow(p.perm.options);
         if (allow) answer(pid, allow.optionId);
@@ -549,7 +549,7 @@ export function createAcpSession({
   client.on('exit', onExit);
 
   return {
-    id, get, prompt, cancel, answer, setMode, setArenaMode, load, close, terminalStarted,
+    id, get, prompt, cancel, answer, setMode, setCityMode, load, close, terminalStarted,
     get busy() { return busy; },
     hasPermission: (pid) => pending.has(pid),
     pendingPermissions: () => [...pending.values()].map((p) => p.perm),

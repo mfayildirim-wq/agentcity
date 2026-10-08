@@ -142,7 +142,7 @@ test('Handler: Standard 50, max. 500, hasMore; resumable nur für beendete Sessi
 });
 
 test('Fortsetzen: beendete Session per loadSession im gespeicherten Ordner, neue Session-Zeile mit Verweis', async () => {
-  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-hist-')));
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-hist-')));
   const bus = createBus();
   const state = createState({ bus });
   const repo = setup();
@@ -187,7 +187,7 @@ test('Fortsetzen: beendete Session per loadSession im gespeicherten Ordner, neue
 });
 
 test('Prozess-Exit beendet die Session mit Status error', async () => {
-  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-hist-')));
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-hist-')));
   const bus = createBus();
   const state = createState({ bus });
   const repo = setup();
@@ -230,8 +230,8 @@ test('Watcher-Agent verschwindet → Session beendet (ended); taucht er wieder a
   w.stop();
 });
 
-test('Fortsetzen ersetzt einen Watcher-Agenten derselben (Arena-)Session statt sie zu übernehmen', async () => {
-  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-hist-')));
+test('Fortsetzen ersetzt einen Watcher-Agenten derselben (City-)Session statt sie zu übernehmen', async () => {
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-hist-')));
   const bus = createBus();
   const state = createState({ bus });
   const repo = setup();
@@ -249,7 +249,7 @@ test('Fortsetzen ersetzt einen Watcher-Agenten derselben (Arena-)Session statt s
 });
 
 test('Fortsetzen: Fehlerpfad beendet die neue Zeile mit error, blockiert kein weiteres Fortsetzen; nur beendete Sessions', async () => {
-  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'arena-hist-')));
+  const cwd = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-hist-')));
   const bus = createBus();
   const state = createState({ bus });
   const repo = setup();
@@ -285,14 +285,14 @@ test('endDangling lässt übergebene (laufende) Sessions offen', () => {
   assert.equal(repo.getSession('aktiv').ended_at, null);
 });
 
-test('Watcher blendet Sitzungsdateien geschlossener Arena-Sessions aus (außer spätere CLI-Nutzung > 5 s)', async () => {
+test('Watcher blendet Sitzungsdateien geschlossener City-Sessions aus (außer spätere CLI-Nutzung > 5 s)', async () => {
   const bus = createBus();
   const state = createState({ bus });
   const repo = setup();
   const events = [];
   bus.on('event', ({ event }) => events.push(event));
-  repo.createSession({ id: 'arena-1', toolId: 'claude', acpSessionId: 'ext-1', source: 'acp', startedAt: 1000 });
-  repo.endSession('arena-1', 'done', 5000);
+  repo.createSession({ id: 'city-1', toolId: 'claude', acpSessionId: 'ext-1', source: 'acp', startedAt: 1000 });
+  repo.endSession('city-1', 'done', 5000);
   const mk = (lastActivity) => {
     const a = createAgent({ id: 'w:claude:ext-1', kind: 'main', toolId: 'claude', sessionId: 'ext-1', project: 'p', source: 'watch' });
     a.lastActivity = lastActivity;
@@ -310,8 +310,8 @@ test('Watcher blendet Sitzungsdateien geschlossener Arena-Sessions aus (außer s
   list = [mk(5000 + 60_000)];
   await w.tick();
   assert.ok(state.get('w:claude:ext-1'));
-  // laufende Arena-Session → ausblenden
-  repo.createSession({ id: 'arena-2', toolId: 'claude', acpSessionId: 'ext-2', source: 'acp', startedAt: 1 });
+  // laufende City-Session → ausblenden
+  repo.createSession({ id: 'city-2', toolId: 'claude', acpSessionId: 'ext-2', source: 'acp', startedAt: 1 });
   const b = createAgent({ id: 'w:claude:ext-2', kind: 'main', toolId: 'claude', sessionId: 'ext-2', project: 'p', source: 'watch' });
   b.lastActivity = Date.now();
   list = [b];
@@ -322,7 +322,7 @@ test('Watcher blendet Sitzungsdateien geschlossener Arena-Sessions aus (außer s
 
 test('Sperrdatei: zweiter Server mit demselben Datenordner wird abgewiesen, tote PID übernommen', async () => {
   const { acquireLock } = await import('../server/config.js');
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'arena-lock-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agentcity-lock-'));
   const a = acquireLock(dir);
   assert.equal(a.ok, true);
   // anderer, lebender Prozess (dieser Test-Prozess unter fremder PID-Annahme): eigene PID gilt nicht als fremd

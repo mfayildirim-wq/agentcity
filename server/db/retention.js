@@ -6,9 +6,9 @@ export const RETENTION_INTERVAL_MS = 24 * 3600_000;
 const DAY_MS = 24 * 3600_000;
 export const DONE_TASK_DAYS = 30;
 
-// Frist aus ARENA_RETENTION_DAYS (positive Zahl), sonst 90
+// Frist aus AGENTCITY_RETENTION_DAYS (positive Zahl), sonst 90
 export function retentionDays(env = process.env) {
-  const n = Number(env.ARENA_RETENTION_DAYS);
+  const n = Number(env.AGENTCITY_RETENTION_DAYS ?? env.ARENA_RETENTION_DAYS);
   return Number.isFinite(n) && n > 0 ? n : DEFAULT_RETENTION_DAYS;
 }
 
