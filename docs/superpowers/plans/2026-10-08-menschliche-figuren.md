@@ -27,7 +27,7 @@
 - Create: `public/js/person.js`
 - Test: `test/person.test.js`
 
-- [ ] **Step 1: Test**
+- [x] **Step 1: Test**
 
 ```js
 import test from 'node:test';
@@ -54,9 +54,9 @@ test('Verteilung: beide Geschlechter und mehrere Frisuren über 200 Ids', () => 
 });
 ```
 
-- [ ] **Step 2: FAIL** (Modul fehlt).
+- [x] **Step 2: FAIL** (Modul fehlt).
 
-- [ ] **Step 3: Implementieren**
+- [x] **Step 3: Implementieren**
 
 ```js
 // Person je Agent: aus der Id deterministisch abgeleitet, damit Figuren wiedererkennbar sind
@@ -89,14 +89,14 @@ export function personOf(a) {
 }
 ```
 
-- [ ] **Step 4: PASS**, **Step 5: Commit** – `feat(web): Person je Agent`.
+- [x] **Step 4: PASS**, **Step 5: Commit** – `feat(web): Person je Agent`.
 
 ### Task 2: Figur aus der Person bauen
 
 **Files:**
 - Modify: `public/js/avatar.js:7-30 (GEO), 63-161 (build), 164-214 (buildStyle)`
 
-- [ ] **Step 1: Geometrien ergänzen** in `GEO`:
+- [x] **Step 1: Geometrien ergänzen** in `GEO`:
 
 ```js
   hairLong: new THREE.SphereGeometry(0.215, 20, 12, 0, Math.PI * 2, 0, Math.PI * 0.5), // Deckhaar (wie hair, etwas größer)
@@ -112,7 +112,7 @@ export function personOf(a) {
   skirt: new THREE.CylinderGeometry(0.2, 0.3, 0.32, 20, 1, true),
 ```
 
-- [ ] **Step 2: `build(a)` umstellen** –
+- [x] **Step 2: `build(a)` umstellen** –
   - `const p = personOf(a); this.person = p;` (Import `personOf` aus `./person.js`).
   - Materialien: `skin = this.m(p.skin)`, `hair = this.m(p.hairColor)`, `shirtM = this.m(p.shirt)`, `pantsM = this.m(p.pants)`; Subagenten: `shirtM = this.m(agentColor(a))` (Typfarbe bleibt am Hemd, Person sonst gleich).
   - Proportionen: Frauen `torso.scale.set(0.88, 1, 0.74)`, Schultern (`mkArm`-x) `±0.28` statt `±0.31`; Männer `torso.scale.set(1, 1, 0.8)`. Körperhöhe: `body.scale.setScalar(p.height)` (Label- und Ring-Positionen bleiben an `group`).
@@ -142,14 +142,14 @@ export function personOf(a) {
   - `buildStyle(...)` unverändert: nutzt weiterhin `agentColor(a)` für Mütze/Kapuze/Schal/Visier/Raute. Bei `hoodie` bleibt die Frisur verdeckt (`cap.visible = false`, zusätzliche Haar-Meshes ebenfalls `visible = false`).
   - Augen bleiben; Mund: kleiner Box-Strich `0.06 × 0.012 × 0.01` in dunklerer Hautfarbe bei `(0, -0.08, 0.19)`.
 
-- [ ] **Step 3: `lookOf(a)`** – unverändert (Person hängt nur an der Id); Subagenten-Look `sub` bleibt.
+- [x] **Step 3: `lookOf(a)`** – unverändert (Person hängt nur an der Id); Subagenten-Look `sub` bleibt.
 
-- [ ] **Step 4: Prüfen** – `?demo`: Figuren unterscheidbar (mind. eine Frau mit langem Haar/Rock, ein Mann mit Bart, eine Brille), Tool-Farbe an Mütze/Raute/Kragen sichtbar; Gehen/Sitzen/Tippen/Hand heben funktionieren weiter (Rock bewegt sich mit `body`); Schatten ok. Screenshot per Headless-Chrome wie im Repo üblich (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=8000 --screenshot=…`).
+- [x] **Step 4: Prüfen** – `?demo`: Figuren unterscheidbar (mind. eine Frau mit langem Haar/Rock, ein Mann mit Bart, eine Brille), Tool-Farbe an Mütze/Raute/Kragen sichtbar; Gehen/Sitzen/Tippen/Hand heben funktionieren weiter (Rock bewegt sich mit `body`); Schatten ok. Screenshot per Headless-Chrome wie im Repo üblich (`--headless=new --use-angle=swiftshader --enable-unsafe-swiftshader --virtual-time-budget=8000 --screenshot=…`).
 
-- [ ] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(web): menschlichere Figuren`.
+- [x] **Step 5: Tests** – `npm test` grün. **Step 6: Commit** – `feat(web): menschlichere Figuren`.
 
 ### Task 3: Feinschliff
 
-- [ ] Hemdfarbe darf nicht mit der Tool-Farbe verwechselbar sein: falls `shirt` und `agentColor(a)` nahe beieinander liegen (Farbabstand im RGB-Raum < 0.18), die nächste Palettenfarbe nehmen (in `person.js` mit optionalem Parameter `avoid` lösen und in `avatar.js` `personOf(a, agentColor(a))` aufrufen; Test ergänzen).
-- [ ] Demo-Hauptagenten bekommen Namen? Nein – Namen bleiben Titel/Tool (YAGNI).
-- [ ] `npm test` grün, Commit `fix(web): Hemdfarbe meidet Tool-Farbe`.
+- [x] Hemdfarbe darf nicht mit der Tool-Farbe verwechselbar sein: falls `shirt` und `agentColor(a)` nahe beieinander liegen (Farbabstand im RGB-Raum < 0.18), die nächste Palettenfarbe nehmen (in `person.js` mit optionalem Parameter `avoid` lösen und in `avatar.js` `personOf(a, agentColor(a))` aufrufen; Test ergänzen).
+- [x] Demo-Hauptagenten bekommen Namen? Nein – Namen bleiben Titel/Tool (YAGNI).
+- [x] `npm test` grün, Commit `fix(web): Hemdfarbe meidet Tool-Farbe`.
