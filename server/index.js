@@ -24,6 +24,8 @@ import { createTasks } from './core/tasks.js';
 import { createPtyManager } from './pty/manager.js';
 import { createRegistry } from './agents/registry.js';
 import { createSessionManager } from './acp/manager.js';
+import { spawn } from 'node:child_process';
+import { loginUrl } from './api/http.js';
 
 const config = loadConfig();
 // pro Datenordner nur ein Server (sonst schrieben zwei Prozesse in dieselbe DB und beendeten fremde Sessions)
@@ -61,7 +63,7 @@ const ws = attachWs({
 
 server.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
-    console.error(`\n  Port ${config.port} ist schon belegt – läuft Agent Arena bereits? Dann einfach http://${config.host}:${config.port} öffnen.`);
+    console.error(`\n  Port ${config.port} ist schon belegt – läuft Agent Arena bereits? Dann den Link aus dessen Terminal öffnen.`);
     console.error(`  Beenden:  kill $(lsof -ti tcp:${config.port})   ·   Anderer Port:  PORT=4318 npm start\n`);
     lock.release();
     process.exit(1);
@@ -76,9 +78,13 @@ server.listen(config.port, config.host, () => {
   // erst jetzt (Port gehört uns): nach Absturz offen gebliebene Sessions beenden – außer den vom Watcher gemeldeten
   try { repo.endDangling(state.all().map((a) => a.sessionId)); } catch (err) { console.error('[db] endDangling', err.message); }
   const n = state.all().length;
-  console.log(`\n  Agent Arena läuft auf  http://${config.host}:${server.address().port}`);
+  const url = loginUrl(config.host, server.address().port, config.token);
+  console.log(`\n  Agent Arena läuft – im Browser öffnen:  ${url}`);
   console.log(`  Quelle: ${config.claudeProjectsDir}  ·  ${n} Agent(en) im Zeitfenster von ${config.windowMin} min`);
   console.log(`  Daten:  ${config.dataDir}\n`);
+  if (process.env.ARENA_OPEN === '1' && process.platform === 'darwin') {
+    try { spawn('open', [url], { stdio: 'ignore', detached: true }).on('error', () => {}).unref(); } catch { /* egal */ }
+  }
 });
 
 // Sauber beenden: Agenten-Prozesse und Watcher stoppen, Puffer schreiben, Verbindungen und DB schließen

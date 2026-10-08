@@ -10,11 +10,17 @@ Terminal startest, erscheinen ebenfalls (Dateibeobachtung) und lassen sich über
 
 ```bash
 npm install
-npm start          # → http://127.0.0.1:4317 (Node ≥ 22.13)
+npm start          # Node ≥ 22.13
 ```
 
+Der Server gibt beim Start einen Login-Link aus, z. B. `http://127.0.0.1:4317/?t=<token>` – diesen Link im Browser
+öffnen (wie bei Jupyter). Er setzt das Zugangs-Cookie und leitet auf die Arena um; danach genügt
+http://127.0.0.1:4317. Ohne Cookie zeigt die Seite nur den Hinweis, den Link aus dem Terminal zu öffnen.
+`ARENA_OPEN=1 npm start` öffnet den Link auf macOS automatisch.
+
 Port belegt? `PORT=4318 npm start`. Pro Datenordner läuft nur ein Server; einen zweiten startest du mit eigenem
-`ARENA_DATA_DIR`. Demo ohne Agenten: http://127.0.0.1:4317/?demo (oder ▶-Knopf oben rechts).
+`ARENA_DATA_DIR` (eigenes Token, eigener Link). Demo ohne Agenten: http://127.0.0.1:4317/?demo (oder ▶-Knopf oben
+rechts).
 
 Neue Session: „+“ (oder `N`) → Tool wählen, Projektordner (zuletzt verwendete oben), Modus *Bestätigen* (Rückfragen
 im Browser) oder *Auto* (Rückfragen automatisch freigeben), optional Titel. Die Steuerung läuft über das
@@ -120,7 +126,7 @@ Alles liegt in `~/.agent-arena/` (Ordner Modus 0700):
 
 | Datei         | Inhalt                                                                         |
 |---------------|--------------------------------------------------------------------------------|
-| `token`       | Zugangstoken (32 Hex-Zeichen, Modus 0600), wird beim ersten Start erzeugt       |
+| `token`       | Zugangstoken (32 Hex-Zeichen, Modus 0600), wird beim ersten Start erzeugt; steckt im Login-Link |
 | `agents.json` | eigene bzw. geänderte Agenten-Tools                                            |
 | `server.lock` | PID des laufenden Servers – pro Datenordner läuft nur ein Server (zweiter Start bricht ab; die Sperre eines beendeten Prozesses wird übernommen) |
 | `arena.db`    | SQLite (`node:sqlite`): Projekte, Sessions, Agenten, Ereignisse, Nachrichten, Berechtigungen, Aufgaben, Besprechungen |
@@ -131,8 +137,15 @@ Zeilenzahlen). Beiträge von Besprechungen, die seit über 30 Tagen geschlossen 
 ## Sicherheit
 
 - Server nur auf 127.0.0.1; fremde Host-/Origin-Header werden abgewiesen
-- WebSocket nur mit Token: Browser über das HttpOnly-Cookie `arena_token` (setzt die Startseite, Origin muss Host
-  und Port der Arena entsprechen), andere Clients per `hello { token }`; sonst Abbruch mit Code 4401
+- Zugang nur mit Token: Das HttpOnly-Cookie `arena_token` (SameSite=Strict, 1 Jahr) setzt allein der Login-Link
+  `/?t=<token>` aus dem Terminal (zeitkonstanter Vergleich). Ohne Cookie liefern Seite, statische Dateien und
+  `/vendor/*` nur 401 (frei ist allein `/api/health`). Andere lokale Prozesse oder Nutzer kommen so nicht an die
+  Steuerung, solange sie das Token (`token`, Modus 0600) nicht lesen können
+- WebSocket: Browser über das Cookie (Origin muss Host und Port der Arena entsprechen), andere Clients per
+  `hello { token }`; sonst Abbruch mit Code 4401. Verbindungen ohne `Origin` (Skripte) dürfen nur lesen
+  (`hello`, `history.*` außer `history.resume`, `chat.history`, `pty.list`, `fs.pickDir`); Steuern, Rückfragen
+  beantworten, Terminals, Einstellungen, Aufgaben und Besprechungen gehen nur aus dem Browser
+- Pro Datenordner ein Server (Sperrdatei), jeder mit eigenem Token
 - Agenten lesen und schreiben Dateien (`fs/*`) nur im Projektordner; im Modus *Bestätigen* braucht jedes
   Werkzeug mit Rückfrage deine Erlaubnis
 - Terminals führen echte Shell-Befehle aus (node-pty) und sind deshalb genauso abgesichert wie die
@@ -170,6 +183,7 @@ test/               node --test
 | `PORT`                | 4317                             | Port                                   |
 | `WINDOW_MIN`          | 90                               | beobachtete Sessions der letzten N min |
 | `ARENA_DATA_DIR`      | `~/.agent-arena`                 | Token, Tools, Datenbank                |
+| `ARENA_OPEN`          | –                                | `1`: Login-Link beim Start öffnen (macOS) |
 | `ARENA_DB`            | `<ARENA_DATA_DIR>/arena.db`      | SQLite-Datei                           |
 | `CLAUDE_PROJECTS_DIR` | `~/.claude/projects`             | Claude-Code-Transkripte                |
 | `CODEX_SESSIONS_DIR`  | `~/.codex/sessions`              | Codex-Sessions                         |

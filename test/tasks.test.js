@@ -181,7 +181,8 @@ test('WS: task.* und meeting.* über den Router', async () => {
     handlers: createHandlers(taskHandlers, meetingHandlers),
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  const ws = new WebSocket(`ws://127.0.0.1:${server.address().port}/ws`);
+  const wsPort = server.address().port;
+  const ws = new WebSocket(`ws://127.0.0.1:${wsPort}/ws`, { headers: { Origin: `http://127.0.0.1:${wsPort}`, Cookie: `arena_token=${TOKEN}` } });
   const queue = [];
   ws.on('message', (d) => queue.push(JSON.parse(d)));
   await new Promise((r) => ws.on('open', r));

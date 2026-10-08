@@ -1,13 +1,9 @@
 // WebSocket-Verbindung zum Server: Anmeldung per Cookie, Wiederverbindung, Anfrage/Antwort
 const BACKOFF = [1000, 2000, 4000, 8000, 10000];
 
-// Anmeldung: Das HttpOnly-Cookie arena_token (gesetzt von der Startseite) geht beim Upgrade mit;
-// der Server schickt danach von selbst einen Snapshot.
-
-// Startseite neu abrufen, damit der Server das Cookie erneut setzt
-async function refreshCookie() {
-  try { await fetch('/', { credentials: 'same-origin', cache: 'no-store' }); } catch { /* Server nicht erreichbar */ }
-}
+// Anmeldung: Das HttpOnly-Cookie arena_token (gesetzt über den Login-Link aus dem Terminal) geht beim
+// Upgrade mit; der Server schickt danach von selbst einen Snapshot. Fehlt es (4401), zeigt main.js einen
+// Hinweis – neu setzen lässt es sich nur über den Link.
 
 export function createConnection({ onMessage, onStatus } = {}) {
   let ws = null;
@@ -41,7 +37,7 @@ export function createConnection({ onMessage, onStatus } = {}) {
       status('off', { code: e.code });
       if (stopped) return;
       const delay = BACKOFF[Math.min(attempt++, BACKOFF.length - 1)];
-      timer = setTimeout(async () => { if (e.code === 4401) await refreshCookie(); connect(); }, delay);
+      timer = setTimeout(connect, delay);
     };
     ws.onerror = () => {};
   }

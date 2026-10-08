@@ -315,7 +315,7 @@ const conn = createConnection({
       }
       wasLive = true;
     } else if (wasLive || info?.code === 4401) {
-      showBanner(info?.code === 4401 ? 'Zugang abgelehnt – melde neu an …' : 'Verbindung getrennt – verbinde neu …');
+      showBanner(info?.code === 4401 ? 'Anmeldung abgelaufen – Link aus dem Terminal öffnen' : 'Verbindung getrennt – verbinde neu …');
     }
     if (!demo) store.setConnection(st);
   },

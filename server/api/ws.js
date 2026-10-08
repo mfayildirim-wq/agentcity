@@ -1,17 +1,13 @@
 // WebSocket-Router: Token-Prüfung, Snapshot, Anfrage/Antwort, Bus → alle Clients
 import { WebSocketServer } from 'ws';
-import { timingSafeEqual } from 'node:crypto';
 import { BROADCAST_TYPES } from '../core/bus.js';
-import { isLocalHost } from './http.js';
+import { isLocalHost, safeEqual, cookieToken } from './http.js';
 
-const safeEqual = (a, b) => {
-  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
-  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
-};
-
-function cookieToken(header = '') {
-  const m = header.match(/(?:^|;\s*)arena_token=([0-9a-f]+)/);
-  return m ? m[1] : null;
+// Verbindungen ohne Origin (Nicht-Browser, z. B. Skripte mit dem Token) dürfen nur lesen.
+// history.resume startet einen Agenten-Prozess und zählt deshalb nicht dazu.
+export function readOnlyAllowed(type) {
+  if (type === 'history.resume') return false;
+  return type === 'chat.history' || type === 'pty.list' || type === 'fs.pickDir' || type.startsWith('history.');
 }
 
 // Nur die Arena-Seite selbst darf sich verbinden: Origin (Host + Port) muss dem Host-Header
@@ -65,6 +61,7 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
 
   wss.on('connection', (ws, req) => {
     let authed = false;
+    const readOnly = !req.headers.origin;
     ws.isAlive = true;
     ws.on('pong', () => { ws.isAlive = true; });
     const send = (msg) => { if (ws.readyState === ws.OPEN) ws.send(encode(msg)); };
@@ -95,6 +92,10 @@ export function attachWs({ server, ctx, handlers = {}, token, pingMs = 15_000, a
       }
       if (!authed) { ws.close(4401, 'Nicht angemeldet'); return; }
 
+      if (readOnly && !readOnlyAllowed(msg.type)) {
+        send({ type: 'error', id: msg.id, message: `Verbindung ohne Browser-Origin ist nur lesend: ${msg.type}` });
+        return;
+      }
       const handler = Object.hasOwn(handlers, msg.type) ? handlers[msg.type] : null;
       if (!handler) { send({ type: 'error', id: msg.id, message: `Unbekannter Nachrichtentyp: ${msg.type}` }); return; }
       try {

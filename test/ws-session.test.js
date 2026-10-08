@@ -55,7 +55,7 @@ after(async () => {
 });
 
 function open() {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`);
+  const ws = new WebSocket(`ws://127.0.0.1:${port}/ws`, { headers: { Origin: `http://127.0.0.1:${port}`, Cookie: `arena_token=${TOKEN}` } });
   const queue = [];
   const waiters = [];
   let seq = 0;
