@@ -1,16 +1,35 @@
 // Stilisierte Figur aus Grundkörpern – leicht, schattenwerfend, animierbar.
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
-import { agentColor, avatarStyle, skinTone, hairTone, hash, STATUS, STATIONS, agentName } from './config.js';
+import { agentColor, avatarStyle, hash, STATUS, STATIONS, agentName } from './config.js';
+import { personOf } from './person.js';
 import { esc } from './ui/common.js';
 
 const capsule = (r, len) => new THREE.CapsuleGeometry(r, len, 6, 12);
+const TAU = Math.PI * 2;
+// Haarschalen lassen vorn ein Fenster fürs Gesicht frei (phi ab π/2+0.8 bis π/2−0.8)
+const hairShell = (thetaStart, thetaLen) => new THREE.SphereGeometry(0.235, 24, 8, Math.PI / 2 + 0.8, TAU - 1.6, thetaStart, thetaLen);
 const GEO = {
   leg: capsule(0.1, 0.42),
   arm: capsule(0.068, 0.4),
   torso: capsule(0.23, 0.32),
   head: new THREE.SphereGeometry(0.2, 24, 18),
-  hair: new THREE.SphereGeometry(0.212, 24, 12, 0, Math.PI * 2, 0, Math.PI * 0.55),
+  hair: new THREE.SphereGeometry(0.212, 24, 12, 0, TAU, 0, Math.PI * 0.55),   // kurze Haarkappe
+  buzz: new THREE.SphereGeometry(0.206, 24, 10, 0, TAU, 0, Math.PI * 0.5),    // Stoppeln, eng am Kopf
+  hairSide: hairShell(Math.PI * 0.55, Math.PI * 0.2),                          // langes Haar: setzt die Kappe seitlich/hinten fort
+  hairBack: new THREE.CapsuleGeometry(0.17, 0.26, 4, 12),                       // langes Haar hinten bis zu den Schultern
+  bobTop: new THREE.SphereGeometry(0.235, 24, 10, 0, TAU, 0, Math.PI * 0.42),  // Bob: Pony bis über die Augen
+  bobSide: hairShell(Math.PI * 0.42, Math.PI * 0.3),                            // Bob: Seiten bis zum Kinn
+  bun: new THREE.SphereGeometry(0.085, 12, 10),
+  ponytail: new THREE.CapsuleGeometry(0.06, 0.3, 4, 10),
+  curl: new THREE.SphereGeometry(0.075, 10, 8),                                 // Locken: Kugeln auf dem Deckhaar
+  beard: new THREE.SphereGeometry(0.208, 20, 8, -0.1, Math.PI + 0.2, Math.PI * 0.66, Math.PI * 0.3), // Kinn, Wangen, Koteletten – ab Mundhöhe
+  lens: new THREE.TorusGeometry(0.055, 0.008, 6, 20),
+  bridge: new THREE.BoxGeometry(0.05, 0.008, 0.008),
+  temple: new THREE.BoxGeometry(0.008, 0.008, 0.19),                            // Brillenbügel bis zum Ohr
+  mouth: new THREE.BoxGeometry(0.06, 0.012, 0.01),
+  collar: new THREE.TorusGeometry(0.2, 0.025, 8, 28),                           // Kragenring in Tool-/Typfarbe
+  skirt: new THREE.CylinderGeometry(0.22, 0.27, 0.32, 20, 1, true),
   eye: new THREE.SphereGeometry(0.026, 8, 6),
   hand: new THREE.SphereGeometry(0.075, 10, 8),
   shoe: new THREE.BoxGeometry(0.17, 0.08, 0.26),
@@ -62,16 +81,24 @@ export class Avatar {
 
   build(a) {
     this.look = Avatar.lookOf(a);
-    const shirt = new THREE.Color(agentColor(a));
-    const pants = shirt.clone().lerp(new THREE.Color('#2a2f3a'), a.kind === 'main' ? 0.78 : 0.7);
-    const skin = this.m(skinTone(a.id));
-    const hair = this.m(hairTone(a.id));
-    const shirtM = this.m(shirt);
-    const pantsM = this.m(pants);
+    const isMain = a.kind === 'main';
+    this.style = isMain ? avatarStyle(a) : null;
+    // Person (Geschlecht, Frisur, Haut, Kleidung …) hängt nur an der Id; die Tool-/Typfarbe liegt auf Zubehör und Kragen
+    const tool = new THREE.Color(agentColor(a));
+    const p = personOf(a);
+    this.person = p;
+    const skin = this.m(p.skin);
+    const hair = this.m(p.hairColor, { roughness: 0.85 });
+    const shirtM = this.m(isMain ? p.shirt : tool); // Subagenten tragen weiter ihre Typfarbe
+    const pantsM = this.m(p.pants);
+    const legM = p.skirt ? skin : pantsM;
     const shoeM = this.m('#2a2c33');
     const eyeM = this.m('#1b1d22', { roughness: 0.3 });
+    const female = p.gender === 'f';
+    const xs = female ? 0.88 : 1, zs = female ? 0.74 : 0.8; // Oberkörper: Frauen schmaler
 
     const body = new THREE.Group();
+    body.scale.setScalar(p.height); // Körpergröße, Füße bleiben am Boden
     this.body = body;
     this.group.add(body);
 
@@ -79,7 +106,7 @@ export class Avatar {
     const mkLeg = (x) => {
       const pivot = new THREE.Group();
       pivot.position.set(x, 0.72, 0);
-      const leg = new THREE.Mesh(GEO.leg, pantsM);
+      const leg = new THREE.Mesh(GEO.leg, legM);
       leg.position.y = -0.31;
       const shoe = new THREE.Mesh(GEO.shoe, shoeM);
       shoe.position.set(0, -0.68, 0.04);
@@ -90,9 +117,15 @@ export class Avatar {
     this.legL = mkLeg(-0.12);
     this.legR = mkLeg(0.12);
 
+    if (p.skirt) {
+      const skirt = new THREE.Mesh(GEO.skirt, this.m(p.pants, { side: THREE.DoubleSide }));
+      skirt.position.y = 0.62;
+      body.add(skirt);
+    }
+
     const torso = new THREE.Mesh(GEO.torso, shirtM);
     torso.position.y = 1.02;
-    torso.scale.set(1, 1, 0.78);
+    torso.scale.set(xs, 1, zs);
     body.add(torso);
     this.torso = torso;
 
@@ -107,8 +140,16 @@ export class Avatar {
       body.add(pivot);
       return pivot;
     };
-    this.armL = mkArm(-0.31);
-    this.armR = mkArm(0.31);
+    const shoulder = female ? 0.28 : 0.31;
+    this.armL = mkArm(-shoulder);
+    this.armR = mkArm(shoulder);
+
+    // Kragenring: schmaler Ring am Hals in Tool-/Typfarbe, damit die Zugehörigkeit auch ohne Zubehör sichtbar ist
+    const collar = new THREE.Mesh(GEO.collar, this.m(tool, { emissive: tool, emissiveIntensity: 0.2 }));
+    collar.rotation.x = Math.PI / 2;
+    collar.position.y = 1.35;
+    collar.scale.set((0.155 * xs + 0.012) / 0.2, (0.155 * zs + 0.012) / 0.2, 1); // liegt auf dem Oberkörper auf
+    body.add(collar);
 
     const head = new THREE.Group();
     head.position.y = 1.58;
@@ -121,15 +162,28 @@ export class Avatar {
     head.add(skull, cap, eyeL, eyeR);
     body.add(head);
     this.head = head;
+    this.hairParts = [cap]; // alles Haar – unter der Kapuze unsichtbar
+    this.hairBulk = 1;      // volle Frisuren brauchen eine größere Schirmmütze
+    this.buildHair(p.hair, { head, hair, cap, underCap: this.style === 'cap' });
+
+    const mouth = new THREE.Mesh(GEO.mouth, this.m(new THREE.Color(p.skin).lerp(new THREE.Color('#4a2e24'), 0.5)));
+    mouth.position.set(0, -0.08, 0.19);
+    head.add(mouth);
+    if (p.beard) {
+      const beard = new THREE.Mesh(GEO.beard, hair);
+      beard.position.set(0, -0.005, 0.005);
+      head.add(beard);
+    }
+    if (p.glasses) this.buildGlasses(head);
 
     // Hauptagent: Figurenstil seines Tools; Subagent: Abzeichen auf der Brust
-    if (a.kind === 'main') {
-      this.style = avatarStyle(a);
-      this.buildStyle(this.style, shirt, { head, body, hairCap: cap });
+    if (isMain) {
+      this.buildStyle(this.style, tool, { head, body });
     } else {
       const badge = new THREE.Mesh(GEO.badge, this.m('#ffffff', { emissive: '#ffffff', emissiveIntensity: 0.25 }));
       badge.rotation.x = Math.PI / 2;
-      badge.position.set(0.1, 1.12, 0.185);
+      // auf der Brustfläche (Oberkörper ist je Person unterschiedlich breit/tief)
+      badge.position.set(0.1, 1.12, Math.sqrt(1 - (0.1 / (0.23 * xs)) ** 2) * 0.23 * zs + 0.012);
       body.add(badge);
     }
 
@@ -160,22 +214,80 @@ export class Avatar {
     this.setOpacity(0);
   }
 
+  // Frisur aus Grundkörpern; `cap` ist die kurze Haarkappe (Stil `short`), `underCap` = Schirmmütze darüber
+  buildHair(style, { head, hair, cap, underCap }) {
+    const add = (...meshes) => { head.add(...meshes); this.hairParts.push(...meshes); };
+    if (style === 'bald') { cap.visible = false; return; }
+    if (style === 'buzz') { cap.geometry = GEO.buzz; return; }
+    if (style === 'long') {
+      // Kappe auf Schalengröße, Seiten/Hinterkopf setzen sie nahtlos fort, dahinter fällt das Haar bis zu den Schultern
+      cap.scale.setScalar(0.235 / 0.212);
+      const side = new THREE.Mesh(GEO.hairSide, hair);
+      side.rotation.copy(cap.rotation); side.position.copy(cap.position);
+      const back = new THREE.Mesh(GEO.hairBack, hair);
+      back.position.set(0, -0.14, -0.1); back.scale.set(1.12, 1, 0.75);
+      add(side, back);
+      this.hairBulk = 1.1;
+    } else if (style === 'bob') {
+      cap.geometry = GEO.bobTop; cap.rotation.set(0, 0, 0); cap.position.set(0, 0, 0);
+      add(new THREE.Mesh(GEO.bobSide, hair));
+      this.hairBulk = 1.1;
+    } else if (style === 'bun') {
+      const b = new THREE.Mesh(GEO.bun, hair);
+      b.position.set(0, underCap ? 0.04 : 0.12, underCap ? -0.22 : -0.2);
+      add(b);
+    } else if (style === 'ponytail') {
+      const t = new THREE.Mesh(GEO.ponytail, hair);
+      t.position.set(0, -0.1, -0.2); t.rotation.x = 0.25; // hängt vom Hinterkopf in den Nacken
+      add(t);
+    } else if (style === 'curly') {
+      if (underCap) { this.hairBulk = 1.06; return; } // unter der Schirmmütze nur die Kappe, Mütze sitzt etwas weiter
+      // Kranz aus Locken auf dem Deckhaar plus eine obenauf
+      const n = 8;
+      for (let i = 0; i < n; i++) {
+        const ang = (i / n) * TAU;
+        const c = new THREE.Mesh(GEO.curl, hair);
+        c.position.set(Math.sin(ang) * 0.16, 0.12 + Math.cos(ang * 2) * 0.03, Math.cos(ang) * 0.16 - 0.02);
+        add(c);
+      }
+      const top = new THREE.Mesh(GEO.curl, hair); top.position.set(0, 0.19, -0.02); add(top);
+    }
+  }
+
+  // Brille: zwei Ringe, Steg, Bügel bis zu den Ohren (leicht nach hinten gedreht, damit nichts vor dem Gesicht schwebt)
+  buildGlasses(head) {
+    const m = this.m('#2a2d33', { roughness: 0.4, metalness: 0.3 });
+    for (const s of [-1, 1]) {
+      const lens = new THREE.Mesh(GEO.lens, m);
+      lens.position.set(s * 0.07, 0.01, 0.19);
+      lens.rotation.y = s * 0.3;
+      const temple = new THREE.Mesh(GEO.temple, m);
+      temple.position.set(s * 0.167, 0.015, 0.087);
+      temple.rotation.y = -s * 0.37;
+      head.add(lens, temple);
+    }
+    const bridge = new THREE.Mesh(GEO.bridge, m);
+    bridge.position.set(0, 0.015, 0.2);
+    head.add(bridge);
+  }
+
   // gem: schwebende Raute · cap: Schirmmütze · hoodie: Kapuze · scarf: Schal · visor: dunkler Augenstreifen
-  buildStyle(style, color, { head, body, hairCap }) {
+  buildStyle(style, color, { head, body }) {
     const c = new THREE.Color(color);
     const darker = c.clone().lerp(new THREE.Color('#1c2029'), 0.35);
     const lighter = c.clone().lerp(new THREE.Color('#ffffff'), 0.45);
     if (style === 'cap') {
+      const k = this.hairBulk; // sitzt über vollem Haar etwas weiter
       const m = this.m(darker, { roughness: 0.8 });
       const crown = new THREE.Mesh(GEO.capCrown, m);
       crown.position.set(0, 0.03, -0.01);
-      crown.scale.set(1.04, 0.98, 1.06);
+      crown.scale.set(1.04 * k, 0.98 * k, 1.06 * k);
       const band = new THREE.Mesh(GEO.capBand, this.m(lighter, { roughness: 0.7 }));
       band.position.set(0, 0.045, -0.01);
-      band.scale.set(1.04, 1, 1.06);
+      band.scale.set(1.04 * k, 1, 1.06 * k);
       const brim = new THREE.Mesh(GEO.capBrim, m);
-      brim.position.set(0, 0.04, 0.15);
-      brim.scale.set(1, 1, 1.15);
+      brim.position.set(0, 0.04, 0.15 + (k - 1) * 0.2);
+      brim.scale.set(k, 1, 1.15);
       brim.rotation.x = 0.12;
       head.add(crown, band, brim);
     } else if (style === 'hoodie') {
@@ -187,7 +299,7 @@ export class Avatar {
       rim.position.set(0, 0.03, 0.06);
       rim.rotation.x = -0.62;
       rim.scale.set(1.02, 1.08, 1);
-      hairCap.visible = false;
+      for (const h of this.hairParts) h.visible = false; // Kapuze verdeckt die Frisur
       head.add(hood, rim);
     } else if (style === 'scarf') {
       const m = this.m(lighter, { roughness: 0.85 });
