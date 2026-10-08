@@ -44,6 +44,16 @@ test('Session + Agent anlegen, Ereignisse bündeln, history.events sortiert', ()
   assert.equal(repo.history.sessions()[0].status, 'done');
 });
 
+test('Session speichert house_id und liefert houseId', () => {
+  const { repo } = setup();
+  repo.createSession({ id: 's9', toolId: 'claude', source: 'acp', houseId: 'haus-1' });
+  assert.equal(repo.getSession('s9').house_id, 'haus-1');
+  assert.equal(repo.history.session('s9').houseId, 'haus-1');
+  repo.createSession({ id: 's10', toolId: 'claude', source: 'acp' });
+  assert.equal(repo.getSession('s10').house_id, 's10'); // Standard: eigenes Haus
+  assert.equal(repo.history.sessions().find((x) => x.id === 's10').houseId, 's10');
+});
+
 test('resolvePermission setzt option_id', () => {
   const { db, repo } = setup();
   const p = createPermission('a1', { toolCall: { title: 'ls', kind: 'execute', rawInput: { command: 'ls' } }, options: [] });

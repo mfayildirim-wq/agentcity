@@ -39,10 +39,11 @@ export function createRepo(db) {
   }
 
   function createSession(s) {
-    q(`INSERT INTO sessions (id, tool_id, acp_session_id, project_id, title, source, mode, started_at, status, parent_session_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    // house_id: Haus (Auftrag) der Session – Standard ist die Session selbst
+    q(`INSERT INTO sessions (id, tool_id, acp_session_id, project_id, title, source, mode, started_at, status, parent_session_id, house_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(s.id, s.toolId ?? null, s.acpSessionId ?? null, s.projectId ?? null, s.title ?? null,
-        s.source ?? 'acp', s.mode ?? null, s.startedAt ?? Date.now(), s.status ?? 'active', s.parentSessionId ?? null);
+        s.source ?? 'acp', s.mode ?? null, s.startedAt ?? Date.now(), s.status ?? 'active', s.parentSessionId ?? null, s.houseId ?? s.id);
     return s.id;
   }
 
@@ -215,6 +216,7 @@ export function createRepo(db) {
     cwd: r.cwd, title: r.title, source: r.source, mode: r.mode, startedAt: r.started_at, endedAt: r.ended_at,
     duration: r.ended_at != null && r.started_at != null ? Math.max(0, r.ended_at - r.started_at) : null,
     status: r.status, eventCount: r.event_count, parentSessionId: r.parent_session_id ?? null, resumedBy: r.resumed_by ?? null,
+    houseId: r.house_id ?? r.id, // ältere Zeilen ohne Haus: eigenes Haus
   });
   // jüngste Kind-Session, die diese fortsetzt; ein gescheiterter Versuch (error ohne Ereignisse) zählt nicht
   const RESUMED_BY = `(SELECT c.id FROM sessions c WHERE c.parent_session_id = s.id

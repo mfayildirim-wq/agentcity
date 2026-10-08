@@ -19,6 +19,8 @@ export function openDb(target) {
   // Paket 6: Verweis auf die fortgesetzte Session (ältere Datenbanken ohne Spalte nachrüsten)
   const cols = db.prepare('PRAGMA table_info(sessions)').all().map((c) => c.name);
   if (!cols.includes('parent_session_id')) db.exec('ALTER TABLE sessions ADD COLUMN parent_session_id TEXT');
+  // Häuser: Haus (Auftrag) der Session – fehlt in älteren Datenbanken; leer = eigenes Haus (siehe repo.js)
+  if (!cols.includes('house_id')) db.exec('ALTER TABLE sessions ADD COLUMN house_id TEXT');
   db.exec('CREATE INDEX IF NOT EXISTS sessions_started ON sessions(started_at)');
   db.exec('CREATE INDEX IF NOT EXISTS sessions_acp ON sessions(acp_session_id)');
   db.exec('CREATE INDEX IF NOT EXISTS messages_agent_t ON messages(agent_id, t)');

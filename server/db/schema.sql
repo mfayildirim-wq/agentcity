@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS projects (id TEXT PRIMARY KEY, name TEXT, cwd TEXT UNIQUE, created_at INTEGER);
 CREATE TABLE IF NOT EXISTS sessions (id TEXT PRIMARY KEY, tool_id TEXT, acp_session_id TEXT, project_id TEXT,
-  title TEXT, source TEXT, mode TEXT, started_at INTEGER, ended_at INTEGER, status TEXT);
+  title TEXT, source TEXT, mode TEXT, started_at INTEGER, ended_at INTEGER, status TEXT, house_id TEXT);
 CREATE TABLE IF NOT EXISTS agents (id TEXT PRIMARY KEY, session_id TEXT, kind TEXT, parent_id TEXT, agent_type TEXT,
   description TEXT, model TEXT, started_at INTEGER, ended_at INTEGER, tokens_in INTEGER DEFAULT 0, tokens_out INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, session_id TEXT, agent_id TEXT, t INTEGER, kind TEXT, payload TEXT);
