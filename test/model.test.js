@@ -76,3 +76,12 @@ test('loadToken erzeugt 32 Hex-Zeichen mit Modus 0600 und liest es wieder', () =
   assert.equal(loadToken(dir), t1);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('house: Standard ist die Session-Id, explizit überschreibbar', () => {
+  const a = createAgent({ id: 'a1', toolId: 'claude', project: 'p', sessionId: 's1' });
+  assert.equal(a.house, 's1');
+  const b = createAgent({ id: 'a2', toolId: 'claude', project: 'p', sessionId: 's2', house: 'haus-x' });
+  assert.equal(b.house, 'haus-x');
+  const c = createAgent({ id: 'a3', toolId: 'claude', project: 'p' });
+  assert.equal(c.house, null);
+});

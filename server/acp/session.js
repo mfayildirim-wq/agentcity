@@ -155,7 +155,7 @@ export function createAcpSession({
     const main = get();
     const sub = createAgent({
       id: `a:${randomUUID()}`, kind: 'sub', toolId: main.toolId, sessionId: main.sessionId, acpSessionId: main.acpSessionId,
-      parentId: id, project: main.project, cwd: main.cwd, description: description || title || 'Subagent',
+      parentId: id, project: main.project, house: main.house, cwd: main.cwd, description: description || title || 'Subagent',
       agentType: agentType ?? null, model: main.model, source: 'acp', controllable: false, status: 'thinking',
     });
     sub.subKey = key;

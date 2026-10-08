@@ -41,6 +41,8 @@ export function createAgent(p) {
     id: p.id, kind: p.kind ?? 'main', toolId: p.toolId, sessionId: p.sessionId ?? null,
     acpSessionId: p.acpSessionId ?? null, parentId: p.parentId ?? null,
     project: p.project, cwd: p.cwd ?? null, title: p.title ?? null, description: p.description ?? null,
+    // Haus = Auftrag: Standard ist die Hauptsession; Beitritt zu einem bestehenden Haus setzt die Id explizit
+    house: p.house ?? p.sessionId ?? null,
     agentType: p.agentType ?? null, model: p.model ?? null,
     status: p.status ?? 'idle', tool: null, category: null, detail: null,
     lastText: null, lastPrompt: null, startedAt: p.startedAt ?? Date.now(), lastActivity: Date.now(),
