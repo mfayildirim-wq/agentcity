@@ -15,6 +15,7 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
     chats: {}, // agentId → [{ id, role, text, t, done }]
     diffs: {}, // agentId → [Diff-Ereignis mit oldText/newText] (Server-Agenten tragen nur kompakte Ereignisse)
     terminals: new Map(), // ptyId → { ptyId, agentId, ownerId, kind, command, t, exited, exitCode, signal, data }
+    artifacts: new Map(), // sessionId → Artifact[] (neueste zuerst): Ergebnisse der Agenten (Dateien, URLs)
     selected: null,
     meetingView: null, // geöffnete Besprechung (Chat-Leiste im Meeting-Modus) oder null
     connection: 'off', // live | off | demo
@@ -76,6 +77,8 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
     if (state.meetingView && !state.meetings.has(state.meetingView)) setMeetingView(null);
     state.permissions = toMap(snap.permissions);
     if (snap.tools) { state.tools = snap.tools; changed('tools'); }
+    // Artefakte der laufenden Sessions (Snapshot trägt die letzten 10 je Session) – vorhandene bleiben
+    if (Array.isArray(snap.artifacts)) for (const a of snap.artifacts) putArtifact(a);
     if (state.selected && !state.agents.has(state.selected)) select(null);
     changed('agents'); changed('tasks'); changed('meetings'); changed('permissions');
   }
@@ -192,6 +195,48 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
   }
 
   const onPty = (fn) => { ptySubs.add(fn); return () => ptySubs.delete(fn); };
+
+  // ---------------------------------------------------------------- Artefakte (Ergebnisse)
+  const byUpdated = (x, y) => (y.updatedAt ?? y.t ?? 0) - (x.updatedAt ?? x.t ?? 0);
+  function putArtifact(a) {
+    if (!a?.id || !a.sessionId) return false;
+    const list = state.artifacts.get(a.sessionId) ?? [];
+    const i = list.findIndex((x) => x.id === a.id);
+    const next = i >= 0 ? { ...list[i], ...a } : a;
+    if (i >= 0) list[i] = next; else list.push(next);
+    list.sort(byUpdated);
+    state.artifacts.set(a.sessionId, list.slice(0, 50));
+    return true;
+  }
+  function applyArtifact(a) { if (putArtifact(a)) changed('artifacts'); }
+  // Liste vom Server (artifact.list) – ergänzt Vorhandenes
+  function applyArtifactList(sessionId, list = []) {
+    let n = 0;
+    for (const a of list) if (putArtifact({ ...a, sessionId: a.sessionId ?? sessionId })) n++;
+    if (!state.artifacts.has(sessionId)) state.artifacts.set(sessionId, []);
+    if (n) changed('artifacts');
+    return n;
+  }
+  const artifactsOf = (sessionId) => state.artifacts.get(sessionId) ?? [];
+  const unseenCount = (sessionId) => artifactsOf(sessionId).filter((a) => !a.seen).length;
+  // lokal als gesehen markieren (der Server erhält artifact.seen)
+  function markArtifactsSeen(sessionId) {
+    const list = state.artifacts.get(sessionId);
+    if (!list || !list.some((a) => !a.seen)) return false;
+    state.artifacts.set(sessionId, list.map((a) => (a.seen ? a : { ...a, seen: true })));
+    changed('artifacts');
+    return true;
+  }
+  // Wiedergabe: Stand zum Zeitpunkt t (Artefakte, die bis dahin entstanden sind)
+  function artifactsUntil(t) {
+    if (t == null) return state.artifacts;
+    const out = new Map();
+    for (const [sid, list] of state.artifacts) {
+      const upto = list.filter((a) => (a.t ?? 0) <= t);
+      if (upto.length) out.set(sid, upto);
+    }
+    return out;
+  }
   const terminalsOf = (agentId) => [...state.terminals.values()]
     .filter((t) => t.kind !== 'user' && (t.ownerId === agentId || t.agentId === agentId))
     .sort((x, y) => (x.t ?? 0) - (y.t ?? 0));
@@ -248,9 +293,10 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
     state.terminals = new Map();
     state.tasks = new Map();
     state.meetings = new Map();
+    state.artifacts = new Map();
     setMeetingView(null);
     select(null);
-    changed('agents'); changed('tasks'); changed('meetings');
+    changed('agents'); changed('tasks'); changed('meetings'); changed('artifacts');
   }
 
   // ---------------------------------------------------------------- Wiedergabe
@@ -329,6 +375,7 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
       case 'tools.update': applyTools(msg.tools); return true;
       case 'pty.output': applyPtyOutput(msg); return true;
       case 'pty.exit': applyPtyExit(msg); return true;
+      case 'artifact.add': case 'artifact.update': applyArtifact(msg.artifact); return true;
       default: return false;
     }
   }
@@ -338,6 +385,7 @@ export function createStore({ maxBuffer = MAX_BUFFER } = {}) {
     applySnapshot, applyAgentUpdate, applyAgentRemove, applyEvent, applyChatChunk, applyChatMessage,
     applyPermission, applyPermissionResolved, applyTask, applyTaskRemove, applyMeeting, applyMeetingMessage, setMeetingView, openMeetings, applyChatHistory, applyTools, select, setConnection,
     applyTerminalList, applyPtyOutput, applyPtyExit, upsertTerminal, onPty, terminalsOf,
+    applyArtifact, applyArtifactList, artifactsOf, unseenCount, markArtifactsSeen, artifactsUntil,
     enterPlayback, setPlaybackAgents, exitPlayback, bufferedCount, heldPermissions, isOverflowed,
   };
 }

@@ -33,7 +33,23 @@ export const ICON = {
   x: 'M6 6l12 12M18 6 6 18',
   terminal: 'M4 17l6-5-6-5M12 19h8',
   adopt: 'M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3',
+  // v0.3: Ergebnisse
+  results: 'M3 4h18v12H3zM8 20h8M12 16v4',
+  link: 'M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1',
+  external: 'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3',
+  globe: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z',
+  code: 'M16 18l6-6-6-6M8 6l-6 6 6 6',
+  image: 'M4 5h16v14H4zM4 15l5-5 4 4 3-3 4 4M15 9h.01',
+  pdf: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5M9 17v-5h2a1.5 1.5 0 0 1 0 3H9',
+  file: 'M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5',
+  chevLeft: 'M15 6l-6 6 6 6',
+  chevRight: 'M9 6l6 6-6 6',
 };
+
+// Icon je Artefakt-Art
+export const KIND_ICON = { web: 'globe', html: 'code', text: 'text', image: 'image', pdf: 'pdf', file: 'file' };
+export const KIND_LABEL = { web: 'Webseite', html: 'HTML', text: 'Text', image: 'Bild', pdf: 'PDF', file: 'Datei' };
+export const SOURCE_LABEL = { diff: 'aus Änderung', text: 'aus Antwort', terminal: 'aus Terminal', port: 'lauschender Port' };
 
 // Kurze Zeitangabe hh:mm
 export const fmtTime = (t) => new Date(t).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
@@ -45,6 +61,58 @@ export function renderText(s) {
     if (i % 2) return `<pre>${esc(p.replace(/^[\w-]*\n/, ''))}</pre>`;
     return esc(p).replace(/`([^`\n]+)`/g, '<code>$1</code>').replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>');
   }).join('');
+}
+
+// Inline-Markdown (nach esc): Code, fett, kursiv, Links (nur http/https)
+function inlineMd(s) {
+  return s
+    .replace(/`([^`\n]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>')
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, '$1<i>$2</i>')
+    .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+// Kleiner Markdown-Renderer für Textdateien: Überschriften, Listen, Zitate, Codeblöcke, Absätze, Inline-Elemente.
+// Der Quelltext wird zuerst escaped; es entsteht nur HTML aus diesem Renderer.
+export function renderMarkdown(src) {
+  const parts = String(src ?? '').replace(/\r\n?/g, '\n').split(/^```[^\n]*\n?/m);
+  return parts.map((part, i) => {
+    if (i % 2) return `<pre>${esc(part.replace(/\n$/, ''))}</pre>`;
+    const out = [];
+    let list = null; // { tag, items }
+    let para = [];
+    const flushPara = () => { if (para.length) { out.push(`<p>${inlineMd(para.join(' '))}</p>`); para = []; } };
+    const flushList = () => { if (list) { out.push(`<${list.tag}>${list.items.map((x) => `<li>${inlineMd(x)}</li>`).join('')}</${list.tag}>`); list = null; } };
+    for (const raw of esc(part).split('\n')) {
+      const line = raw.replace(/\s+$/, '');
+      let m;
+      if (!line.trim()) { flushPara(); flushList(); continue; }
+      if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) { flushPara(); flushList(); out.push(`<h${m[1].length}>${inlineMd(m[2])}</h${m[1].length}>`); continue; }
+      if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) { flushPara(); flushList(); out.push('<hr>'); continue; }
+      if ((m = /^\s*(?:[-*+]|\d+[.)])\s+(.*)$/.exec(line))) {
+        flushPara();
+        const tag = /^\s*\d/.test(line) ? 'ol' : 'ul';
+        if (!list || list.tag !== tag) { flushList(); list = { tag, items: [] }; }
+        list.items.push(m[1].replace(/^\[([ xX])\]\s*/, (_, c) => (c === ' ' ? '☐ ' : '☑ ')));
+        continue;
+      }
+      if ((m = /^&gt;\s?(.*)$/.exec(line))) { flushPara(); flushList(); out.push(`<blockquote>${inlineMd(m[1])}</blockquote>`); continue; }
+      if (list && /^\s{2,}/.test(raw)) { list.items[list.items.length - 1] += ' ' + line.trim(); continue; }
+      flushList();
+      para.push(line.trim());
+    }
+    flushPara(); flushList();
+    return out.join('');
+  }).join('');
+}
+
+// Dateigröße lesbar
+export function fmtBytes(n) {
+  if (n == null || !Number.isFinite(Number(n))) return '';
+  n = Number(n);
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} kB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
 // Zeilen-Diff (LCS) für kurze Vorschauen: [{ t: ' '|'+'|'-', s }]

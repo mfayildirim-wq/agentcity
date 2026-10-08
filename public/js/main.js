@@ -18,6 +18,7 @@ import { MeetingPicker, MeetingBar, meetingTitle } from './ui/meeting.js';
 import { Board } from './ui/board.js';
 import { Timeline } from './ui/timeline.js';
 import { Archive } from './ui/archive.js';
+import { ResultsFrame } from './ui/results.js';
 
 const params = new URLSearchParams(location.search);
 const store = createStore();
@@ -76,6 +77,12 @@ const chat = new ChatBar($('chat'), {
   onCityMode: (agentId, cityMode) => request('session.setCityMode', { agentId, cityMode }).catch(() => {}),
   onDeselect: () => select(null),
   shell,
+});
+// Ergebnis-Frame rechts an der Chat-Leiste: Artefakte (Dateien, Webseiten) der Session des gezeigten Agenten
+const results = new ResultsFrame($('chat'), {
+  store, toast, toggleEl: chat.resultsBtn,
+  onOpen: (artifactId) => request('artifact.open', { artifactId }),
+  onSeen: (sessionId) => { if (!demo) quiet('artifact.seen', { sessionId }).catch(() => {}); },
 });
 const perms = new PermissionStack($('perms'), {
   onAnswer: (permissionId, optionId) => request('permission.answer', { permissionId, optionId }),
@@ -245,7 +252,7 @@ async function sessionAction(kind, a) {
   } catch { /* Hinweis kam bereits als Toast */ }
 }
 
-if (params.has('debug')) window.__agentcity = { world, store };
+if (params.has('debug')) window.__agentcity = { world, store, results };
 
 // ---------------------------------------------------------------- Store → Oberfläche
 store.subscribe((s, changes) => {
@@ -282,6 +289,9 @@ store.subscribe((s, changes) => {
     $('btn-meeting').classList.toggle('on', meetingOn);
   }
   if (changes.has('agents') || changes.has('selected') || changes.has('chats') || changes.has('meetingView') || changes.has('meetings') || changes.has('playback')) chat.render(s.selected, changes);
+  if (changes.has('agents') || changes.has('selected') || changes.has('artifacts') || changes.has('meetingView') || changes.has('playback')) {
+    results.render(chat.agentId ? s.agents.get(chat.agentId)?.sessionId ?? null : null, changes);
+  }
   if (changes.has('meetings') || changes.has('meetingView') || changes.has('agents') || changes.has('playback')) {
     meetingBar.render(meetingOn && !playback ? s.meetingView : null, changes);
     if (meetingPicker.isOpen && (changes.has('meetings') || changes.has('agents'))) meetingPicker.draw();

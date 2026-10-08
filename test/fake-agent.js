@@ -3,6 +3,8 @@
 //   normal     → Gedanke, Text, tool_call „ls“, Berechtigung, bei Erlaubnis Diff + Plan + „fertig.“
 //   „subagent“ → zusätzlich ein Subagent-Werkzeug (Task: Recherche)
 //   „lies <pfad>“ / „schreib <pfad>“ → fs/read_text_file bzw. fs/write_text_file beim Client
+//   „diff <pfad>“ → Bearbeiten-Werkzeug mit Diff-Inhalt für diese Datei (Artefakt-Erkennung), ohne zu schreiben
+//   „sag <text>“ → antwortet mit genau diesem Text (z. B. URLs/Pfade für die Artefakt-Erkennung)
 //   „langsam“  → wartet bis zum Abbruch (session/cancel)
 //   „absturz“  → Prozess endet mit Code 3
 //   „stirb“    → stellt eine Berechtigungsanfrage und endet dann mit Code 4
@@ -88,6 +90,23 @@ class FakeAgent {
       } catch (err) {
         await this.text(sessionId, `Fehler: ${err?.message ?? err}`);
       }
+      return { stopReason: 'end_turn' };
+    }
+
+    const diff = input.match(/^diff (.+)$/m);
+    if (diff) {
+      const p = diff[1].trim();
+      await this.update(sessionId, { sessionUpdate: 'tool_call', toolCallId: 'e1', title: `Edit ${p}`, kind: 'edit', status: 'in_progress', rawInput: { file_path: p } });
+      await this.update(sessionId, {
+        sessionUpdate: 'tool_call_update', toolCallId: 'e1', status: 'completed',
+        content: [{ type: 'diff', path: p, oldText: null, newText: 'neu' }],
+      });
+      await this.text(sessionId, `geändert: ${p}`);
+      return { stopReason: 'end_turn' };
+    }
+    const say = input.match(/^sag ([\s\S]+)$/m);
+    if (say) {
+      await this.text(sessionId, say[1]);
       return { stopReason: 'end_turn' };
     }
 
