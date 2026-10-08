@@ -260,24 +260,24 @@ export class World {
   }
 
   // ---------------------------------------------------------------- Leinwände
-  // artifactsBySession: Map sessionId → Artefakte (neueste zuerst); Raum = Projekt der Session;
+  // artifactsBySession: Map sessionId → Artefakte (neueste zuerst); Raum = Haus der Session;
   // ist ein Agent des Raums ausgewählt, zeigt die Leinwand dessen neuestes Artefakt
   syncScreens(artifactsBySession, agents, selected = null) {
-    const roomOf = new Map(); // sessionId → Projekt
-    for (const a of agents) if (a.sessionId && (!roomOf.has(a.sessionId) || a.kind === 'main')) roomOf.set(a.sessionId, a.project);
+    const roomOf = new Map(); // sessionId → Haus
+    for (const a of agents) if (a.sessionId && (!roomOf.has(a.sessionId) || a.kind === 'main')) roomOf.set(a.sessionId, houseOf(a));
     const perRoom = new Map();
     for (const [sid, list] of artifactsBySession ?? []) {
-      const project = roomOf.get(sid);
-      if (!project || !list?.length) continue;
-      if (!perRoom.has(project)) perRoom.set(project, []);
-      perRoom.get(project).push(...list);
+      const house = roomOf.get(sid);
+      if (!house || !list?.length) continue;
+      if (!perRoom.has(house)) perRoom.set(house, []);
+      perRoom.get(house).push(...list);
     }
     const sel = selected ? agents.find((a) => a.id === selected) : null;
-    for (const [name, room] of this.rooms) {
+    for (const [id, room] of this.rooms) {
       if (!room.screen) continue;
-      const list = (perRoom.get(name) ?? []).sort((x, y) => (y.updatedAt ?? y.t ?? 0) - (x.updatedAt ?? x.t ?? 0));
+      const list = (perRoom.get(id) ?? []).sort((x, y) => (y.updatedAt ?? y.t ?? 0) - (x.updatedAt ?? x.t ?? 0));
       let pick = list[0] ?? null;
-      if (sel && sel.project === name && sel.sessionId) pick = list.find((a) => a.sessionId === sel.sessionId) ?? pick;
+      if (sel && houseOf(sel) === id && sel.sessionId) pick = list.find((a) => a.sessionId === sel.sessionId) ?? pick;
       room.screen.setArtifact(pick, list.length, list.filter((a) => !a.seen).length);
     }
     this.updateScreenBudget(true);
