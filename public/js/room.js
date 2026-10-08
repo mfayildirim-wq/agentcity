@@ -1,4 +1,4 @@
-// Raum eines Projekts: Boden, Wände, Möbel, Stationen je Werkzeugart (aus world.js herausgelöst).
+// Raum eines Hauses (Auftrag): Boden, Wände, Möbel, Stationen je Werkzeugart (aus world.js herausgelöst).
 import * as THREE from 'three';
 import { CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { STATIONS } from './config.js';
@@ -146,8 +146,10 @@ function stationPad(x, z, w, d, color) {
 
 // ---------------------------------------------------------------- Raum
 export class Room {
-  constructor(name, world) {
-    this.name = name;
+  constructor(id, world) {
+    this.id = id;
+    this.name = id;
+    this.project = '';
     this.world = world;
     this.group = new THREE.Group();
     this.animated = [];
@@ -303,7 +305,7 @@ export class Room {
   buildLabel() {
     const el = document.createElement('div');
     el.className = 'room-label';
-    el.innerHTML = `<span class="room-dot"></span><span class="room-name"></span><span class="room-count"></span>`;
+    el.innerHTML = `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`;
     el.querySelector('.room-name').textContent = this.name;
     this.countEl = el.querySelector('.room-count');
     this.labelEl = el;
@@ -312,6 +314,13 @@ export class Room {
     lbl.center.set(0, 0.5);
     this.group.add(lbl);
     this.label = lbl;
+  }
+
+  // Raumschild: Hausname (Auftrag), Ordnername als Untertitel – nur wenn er nicht ohnehin der Name ist
+  setName(name, project) {
+    if (name !== this.name) { this.name = name; this.labelEl.querySelector('.room-name').textContent = name; }
+    const p = project && project !== name ? project : '';
+    if (p !== this.project) { this.project = p; this.labelEl.querySelector('.room-proj').textContent = p; }
   }
 
   tick(t, dt) {

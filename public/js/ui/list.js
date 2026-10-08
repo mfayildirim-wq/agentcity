@@ -1,7 +1,8 @@
-// Agentenliste rechts, gruppiert nach Projekt, Subagenten eingerückt unter ihrem Erzeuger
+// Agentenliste rechts, gruppiert nach Haus (Auftrag), Subagenten eingerückt unter ihrem Erzeuger
 import { STATIONS, STATUS, agentColor, agentName } from '../config.js';
 import { esc, DIAMOND, ICON } from './common.js';
 import { svgIcon } from '../config.js';
+import { groupByHouse, houseName } from '../houses.js';
 
 export class AgentList {
   constructor(el, { onSelect, onHover, onAdopt = () => {} }) {
@@ -52,19 +53,18 @@ export class AgentList {
   }
 
   draw() {
-    const groups = new Map();
-    for (const a of this.agents) {
-      if (!groups.has(a.project)) groups.set(a.project, []);
-      groups.get(a.project).push(a);
-    }
+    const groups = groupByHouse(this.agents);
     let html = '';
-    for (const [project, list] of groups) {
-      const closed = this.collapsed.has(project);
+    for (const [house, list] of groups) {
+      const closed = this.collapsed.has(house);
       const active = list.some((a) => a.status === 'tool' || a.status === 'thinking');
+      // Kopf: Hausname (Auftrag), Ordner als Untertitel, wenn er nicht ohnehin der Name ist
+      const name = houseName(list);
+      const project = list.find((a) => a.kind === 'main')?.project ?? list[0]?.project ?? '';
       html += `<div class="grp">
-        <button class="grp-head ${active ? 'active' : ''}" data-toggle="${esc(project)}">
+        <button class="grp-head ${active ? 'active' : ''}" data-toggle="${esc(house)}" title="${esc(project)}">
           <svg viewBox="0 0 24 24" class="ic chev ${closed ? '' : 'open'}"><path d="M9 6l6 6-6 6"/></svg>
-          <span class="grp-name">${esc(project)}</span><span class="grp-n">${list.length}</span>
+          <span class="grp-name">${esc(name)}</span><span class="grp-proj">${esc(project !== name ? project : '')}</span><span class="grp-n">${list.length}</span>
         </button>`;
       if (!closed) {
         const mains = list.filter((a) => a.kind === 'main');

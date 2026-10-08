@@ -95,7 +95,7 @@ export function reconstruct(sessions, data, t) {
     const subIds = new Set(rows.filter((r) => r.kind === 'sub').map((r) => r.id));
     // Ersatz ohne Agentenzeile: erstes Ereignis, das keinem Subagenten gehört
     const mainId = mainRow?.id ?? d.events.find((e) => e.agentId && !subIds.has(e.agentId))?.agentId ?? `h:${s.id}`;
-    const common = { toolId: s.toolId, sessionId: s.id, acpSessionId: s.acpSessionId ?? null, project, cwd: s.cwd ?? null,
+    const common = { toolId: s.toolId, sessionId: s.id, acpSessionId: s.acpSessionId ?? null, project, cwd: s.cwd ?? null, house: s.houseId ?? s.id,
       source: s.source ?? 'acp', controllable: false, adoptable: false, replay: true, tokens: { input: 0, output: 0, cache: 0 } };
     const agents = new Map();
     const opens = new Map();

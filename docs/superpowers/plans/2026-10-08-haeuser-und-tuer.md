@@ -288,7 +288,7 @@ export function housesFor(agents) {
 - Modify: `public/js/ui/list.js:54-82`, `public/js/ui/stats.js:6`, `public/js/replay.js:93`, `public/js/demo.js`
 - Modify: `public/css/app.css:210-217`
 
-- [ ] **Step 1: room.js** – Konstruktor `constructor(id, world)`; `this.id = id; this.name = id;` Label: `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`; Methode:
+- [x] **Step 1: room.js** – Konstruktor `constructor(id, world)`; `this.id = id; this.name = id;` Label: `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`; Methode:
 
 ```js
   setName(name, project) {
@@ -298,13 +298,13 @@ export function housesFor(agents) {
   }
 ```
 
-- [ ] **Step 2: world.js** – `import { houseOf, houseName } from './houses.js';` In `sync`: `byRoom` nach `houseOf(a)`; `this.rooms.get(houseOf(a))`; nach dem Anlegen je Raum `room.setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project)`. `layoutRooms` sortiert weiter nach `order`, dann `name`.
+- [x] **Step 2: world.js** – `import { houseOf, houseName } from './houses.js';` In `sync`: `byRoom` nach `houseOf(a)`; `this.rooms.get(houseOf(a))`; nach dem Anlegen je Raum `room.setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project)`. `layoutRooms` sortiert weiter nach `order`, dann `name`.
 
-- [ ] **Step 3: list.js** – Gruppen über `groupByHouse`; Kopf: `<span class="grp-name">${esc(houseName(list))}</span><span class="grp-proj">${esc(project)}</span><span class="grp-n">…`; `data-toggle` = Haus-Id. stats.js: `new Set(agents.map(houseOf)).size`. replay.js: Agenten aus Sessions bekommen `house: s.houseId ?? s.id`. demo.js: `addMain` setzt `house: id`, `spawnSub` setzt `house: parent.house`; vierten Hauptagenten anlegen: `this.addMain('restaurant-app', 'Checkout-Flow prüfen', now - 3 * 60e3)` → zwei Häuser im selben Ordner sichtbar.
+- [x] **Step 3: list.js** – Gruppen über `groupByHouse`; Kopf: `<span class="grp-name">${esc(houseName(list))}</span><span class="grp-proj">${esc(project)}</span><span class="grp-n">…`; `data-toggle` = Haus-Id. stats.js: `new Set(agents.map(houseOf)).size`. replay.js: Agenten aus Sessions bekommen `house: s.houseId ?? s.id`. demo.js: `addMain` setzt `house: id`, `spawnSub` setzt `house: parent.house`; vierten Hauptagenten anlegen: `this.addMain('restaurant-app', 'Checkout-Flow prüfen', now - 3 * 60e3)` → zwei Häuser im selben Ordner sichtbar.
 
-- [ ] **Step 4: CSS** – `.room-proj, .grp-proj { color: var(--tx-3); font-size: 11px; margin-left: 6px; }`; `.room-name` auf 160 px mit Ellipsis begrenzen (`max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
+- [x] **Step 4: CSS** – `.room-proj, .grp-proj { color: var(--tx-3); font-size: 11px; margin-left: 6px; }`; `.room-name` auf 160 px mit Ellipsis begrenzen (`max-width:160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap`).
 
-- [ ] **Step 5: Prüfen** – `npm test` grün; `?demo`: vier Häuser, zwei mit Untertitel „restaurant-app“; Namen stammen aus den Titeln. **Step 6: Commit** – `feat(web): Räume und Liste nach Haus`.
+- [x] **Step 5: Prüfen** – `npm test` grün; `?demo`: vier Häuser, zwei mit Untertitel „restaurant-app“; Namen stammen aus den Titeln. **Step 6: Commit** – `feat(web): Räume und Liste nach Haus`.
 
 ### Task 2.3: Dialog „Neue Session“: Haus wählen
 

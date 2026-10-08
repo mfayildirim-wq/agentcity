@@ -1,4 +1,4 @@
-// Szene: ein Diorama-Raum pro Projekt, Stationen je Werkzeugart, Figuren laufen dorthin.
+// Szene: ein Diorama-Raum pro Haus (Auftrag), Stationen je Werkzeugart, Figuren laufen dorthin.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer } from 'three/addons/renderers/CSS2DRenderer.js';
@@ -6,6 +6,7 @@ import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { Avatar } from './avatar.js';
 import { agentColor } from './config.js';
 import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR } from './room.js';
+import { houseOf, houseName } from './houses.js';
 import { Town } from './town.js';
 
 // ---------------------------------------------------------------- Welt
@@ -233,11 +234,11 @@ export class World {
   }
 
   // ---------------------------------------------------------------- Räume
-  roomFor(name) {
-    let room = this.rooms.get(name);
+  roomFor(id) {
+    let room = this.rooms.get(id);
     if (!room) {
-      room = new Room(name, this);
-      this.rooms.set(name, room);
+      room = new Room(id, this);
+      this.rooms.set(id, room);
       this.scene.add(room.group);
       this.layoutRooms();
     }
@@ -310,10 +311,12 @@ export class World {
   // ---------------------------------------------------------------- Daten → Szene
   sync(agents) {
     const live = new Set(agents.map((a) => a.id));
+    // Räume nach Haus (Auftrag), nicht nach Ordner
     const byRoom = new Map();
     for (const a of agents) {
-      if (!byRoom.has(a.project)) byRoom.set(a.project, []);
-      byRoom.get(a.project).push(a);
+      const k = houseOf(a);
+      if (!byRoom.has(k)) byRoom.set(k, []);
+      byRoom.get(k).push(a);
     }
 
     // Räume anlegen/aufräumen
@@ -324,12 +327,14 @@ export class World {
         room.dispose(); this.rooms.delete(name); changed = true;
       }
     }
+    // Raumschild: Name aus dem ältesten Hauptagenten, Ordner als Untertitel
+    for (const [name, list] of byRoom) this.rooms.get(name).setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project);
     if (changed) { this.layoutRooms(); if (!this.selected) this.resetView(); }
 
     // Figuren anlegen/aktualisieren
     for (const a of agents) {
       let av = this.avatars.get(a.id);
-      const room = this.rooms.get(a.project);
+      const room = this.rooms.get(houseOf(a));
       // Aussehen geändert (Farbe/Stil des Tools): Figur an gleicher Stelle neu aufbauen
       if (av && !av.leaving && av.look !== Avatar.lookOf(a)) {
         const old = av;

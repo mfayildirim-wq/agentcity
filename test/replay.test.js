@@ -181,3 +181,11 @@ test('mergeEvents: Duplikate verworfen, sortiert nach (t, Eintreffen)', async ()
   assert.equal(mergeEvents(c, [{ id: 'a', t: 2 }, { id: 'd', t: 2 }]), 1);
   assert.deepEqual(c.events.map((e) => e.id), ['b', 'a', 'c', 'd']);
 });
+
+test('Agenten der Wiedergabe tragen das Haus der Session', () => {
+  assert.equal(main(1150).house, 's1'); // ohne houseId: eigenes Haus = Session
+  const s2 = { ...s1, id: 's2', houseId: 'haus-x' };
+  const agents = reconstruct([s2], new Map([['s2', data.get('s1')]]), 2750);
+  assert.equal(agents.length, 2);
+  for (const a of agents) assert.equal(a.house, 'haus-x');
+});
