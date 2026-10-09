@@ -381,6 +381,17 @@ export class World {
     this.focus = { target, pos, follow: key };
   }
 
+  // Leere Häuser abräumen, sobald die letzte Figur hinausgegangen ist (ohne auf ein Daten-Update zu warten)
+  pruneRooms() {
+    let changed = false;
+    for (const [id, room] of this.rooms) {
+      if (this.liveHouses?.has(id)) continue;
+      if ([...this.avatars.values()].some((av) => av.room === room && !av.removed)) continue;
+      room.dispose(); this.rooms.delete(id); changed = true;
+    }
+    if (changed) { this.layoutRooms(); if (!this.selected) this.resetView(); }
+  }
+
   // Kamera fliegt in ein Haus (Doppelklick auf Boden, Raumschild oder Listenkopf)
   focusRoom(id, close = false) {
     const room = this.rooms.get(id);
@@ -446,6 +457,7 @@ export class World {
     let changed = false;
     const firstRooms = this.rooms.size === 0; // erster Aufbau: Kamera sofort setzen statt anfliegen
     for (const name of byRoom.keys()) if (!this.rooms.has(name)) { this.roomFor(name); changed = true; }
+    this.liveHouses = new Set(byRoom.keys()); // für pruneRooms: Häuser mit lebenden Agenten
     for (const [name, room] of this.rooms) {
       if (!byRoom.has(name) && ![...this.avatars.values()].some((av) => av.room === room && !av.removed)) {
         room.dispose(); this.rooms.delete(name); changed = true;
@@ -666,6 +678,7 @@ export class World {
         av.group.removeFromParent();
         av.dispose();
         this.avatars.delete(key);
+        this.pruneRooms();
       }
     }
     for (const room of this.rooms.values()) room.tick(t, dt);
