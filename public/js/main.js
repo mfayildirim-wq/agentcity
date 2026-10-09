@@ -9,6 +9,7 @@ import { renderStats } from './ui/stats.js';
 import { renderLegend } from './ui/legend.js';
 import { toast, showBanner, hideBanner } from './ui/toast.js';
 import { ChatBar } from './ui/chat.js';
+import { TileGrid } from './ui/tiles.js';
 import { PermissionStack } from './ui/permission.js';
 import { NewSessionDialog } from './ui/newsession.js';
 import { SettingsPanel } from './ui/settings.js';
@@ -82,6 +83,25 @@ const chat = new ChatBar($('chat'), {
   onDeselect: () => select(null),
   shell,
 });
+// Kachelmodus (K): alle steuerbaren Sessions als CLI-Fenster über den ganzen Bildschirm
+const tiles = new TileGrid($('tiles'), {
+  store,
+  makeBar: (el) => new ChatBar(el, {
+    store, standalone: true,
+    onSend: (agentId, text) => request('session.prompt', { agentId, text }),
+    onCancel: (agentId) => request('session.cancel', { agentId }).catch(() => {}),
+    onMode: (agentId, modeId) => request('session.setMode', { agentId, modeId }).catch(() => {}),
+    onCityMode: (agentId, cityMode) => request('session.setCityMode', { agentId, cityMode }).catch(() => {}),
+    onDeselect: () => {},
+  }),
+  onFocus: (agentId) => { if (store.state.selected !== agentId) store.select(agentId); },
+});
+const toggleTiles = () => {
+  tiles.toggle();
+  $('btn-tiles').classList.toggle('on', tiles.on);
+  chat.suppressed = tiles.on || !!store.state.playback || !!(store.state.meetingView && store.state.meetings.has(store.state.meetingView));
+  chat.render(store.state.selected, new Set(['agents', 'chats']));
+};
 // Ergebnis-Frame rechts an der Chat-Leiste: Artefakte (Dateien, Webseiten) der Session des gezeigten Agenten
 const results = new ResultsFrame($('chat'), {
   store, toast, toggleEl: chat.resultsBtn,
@@ -315,10 +335,11 @@ store.subscribe((s, changes) => {
   }
   const meetingOn = !!(s.meetingView && s.meetings.has(s.meetingView));
   if (changes.has('meetingView') || changes.has('meetings') || changes.has('playback')) {
-    chat.suppressed = meetingOn || playback;
+    chat.suppressed = meetingOn || playback || tiles.on;
     $('btn-meeting').classList.toggle('on', meetingOn);
   }
   if (changes.has('agents') || changes.has('selected') || changes.has('chats') || changes.has('meetingView') || changes.has('meetings') || changes.has('playback')) chat.render(s.selected, changes);
+  if (tiles.on && (changes.has('agents') || changes.has('chats') || changes.has('tools'))) tiles.render(agents, changes);
   if (changes.has('agents') || changes.has('selected') || changes.has('artifacts') || changes.has('meetingView') || changes.has('playback')) {
     results.render(chat.agentId ? s.agents.get(chat.agentId)?.sessionId ?? null : null, changes);
   }
@@ -420,6 +441,7 @@ $('btn-legend').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('on', !el.classList.contains('hidden'));
 });
 $('btn-reset').addEventListener('click', () => { select(null); world.resetView(); });
+$('btn-tiles').addEventListener('click', toggleTiles);
 $('btn-labels').addEventListener('click', (e) => {
   const on = !world.labelsVisible;
   world.setLabelsVisible(on);
@@ -445,6 +467,7 @@ window.addEventListener('keydown', (e) => {
   if (e.key === 'b' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleMeetingPicker(); }
   if (e.key === 't' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleBoard(); }
   if (e.key === 'r') { select(null); world.resetView(); }
+  if (e.key === 'k' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleTiles(); }
   if (e.key === 'z' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleTimeline(); }
   if (e.key === 'a' && !newSession.isOpen && !settings.isOpen) { e.preventDefault(); toggleArchive(); }
   // Wiedergabe: Pfeiltasten springen 10 s (mit Umschalt 1 min)

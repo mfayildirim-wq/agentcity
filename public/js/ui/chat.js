@@ -13,8 +13,10 @@ function saveHistory(h) {
 }
 
 export class ChatBar {
-  constructor(el, { store, onSend, onCancel, onMode, onCityMode, onDeselect, shell = null }) {
+  // standalone: Kachel im Kachelmodus (ui/tiles.js) – zeigt immer den übergebenen Agenten, ohne Body-Klasse/Ausblenden
+  constructor(el, { store, onSend, onCancel, onMode, onCityMode, onDeselect, shell = null, standalone = false }) {
     this.el = el;
+    this.standalone = standalone;
     this.store = store;
     this.onSend = onSend;
     this.onCancel = onCancel;
@@ -165,8 +167,10 @@ export class ChatBar {
     const a = selected ? this.store.state.agents.get(selected) : null;
     // im Meeting-Modus übernimmt die Besprechungs-Leiste (ui/meeting.js) den Platz
     const show = !!(a && a.controllable && a.kind === 'main') && !this.suppressed;
-    this.el.classList.toggle('hidden', !show);
-    document.body.classList.toggle('has-chat', show);
+    if (!this.standalone) {
+      this.el.classList.toggle('hidden', !show);
+      document.body.classList.toggle('has-chat', show);
+    }
     if (!show) { this.agentId = null; this.shell?.detach(); return; }
     const switched = this.agentId !== a.id;
     this.agentId = a.id;
@@ -179,7 +183,7 @@ export class ChatBar {
       if (switched || atBottom || this.stick) this.log.scrollTop = this.log.scrollHeight;
       this.stick = false;
     }
-    if (switched && this.view === 'chat' && !document.activeElement?.closest?.('input, textarea, select')) this.input.focus({ preventScroll: true });
+    if (switched && this.view === 'chat' && !this.standalone && !document.activeElement?.closest?.('input, textarea, select')) this.input.focus({ preventScroll: true });
   }
 
   renderHead(a) {

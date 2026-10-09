@@ -51,6 +51,9 @@ automatisch freigeben), optional Titel. Die Steuerung läuft über das
   offenen Vorderseite, nie hinter einer Wand); Doppelklick auf leere Fläche außerhalb der Häuser lässt die
   Auswahl nur fallen
 - Maus: linke Taste ziehen verschiebt die Ansicht, rechte Taste dreht, Rad zoomt
+- **Kachelmodus** (Raster-Icon oder `K`): alle steuerbaren Sessions als CLI-Fenster nebeneinander – 2 nebeneinander,
+  bei 3 eine Kachel oben über die ganze Breite, bei 4 und 6 ein Raster, bei ungerader Anzahl belegt die neueste
+  Session links zwei Felder. Eingabe in einer Kachel wählt die Session aus; `K` schließt den Modus wieder
 - Chat-Leiste unten für den ausgewählten steuerbaren Agenten: Enter sendet, Umschalt+Enter Zeilenumbruch, ↑/↓
   Verlauf, `/befehl` geht unverändert an das Tool, Esc bricht eine laufende Antwort ab; Modus des Tools und
   City-Modus (Bestätigen/Auto) in der Kopfzeile
@@ -131,6 +134,7 @@ erscheinen schreibgeschützt im Reiter „Terminalausgaben“ der Detailkarte.
 | `T`              | Aufgaben-Board                                                           |
 | `Z`              | Zeitstrahl                                                               |
 | `A`              | Archiv                                                                   |
+| `K`              | Kachelmodus: alle steuerbaren Sessions als CLI-Fenster über den Bildschirm |
 | `R`              | Ansicht zurücksetzen                                                     |
 | `Esc`            | Wiedergabe beenden → Dialog/Besprechung schließen → Auswahl aufheben     |
 | `←` / `→`        | in der Wiedergabe 10 s zurück/vor (`Umschalt`: 1 min)                    |
