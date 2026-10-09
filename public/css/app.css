@@ -81,7 +81,7 @@ body.panel-off .panel { transform: translateX(calc(100% + 20px)); opacity: 0; po
 .grp-head {
   display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 6px; border: 0; background: none;
   color: var(--tx-2); cursor: pointer; border-radius: 6px; font-size: 11.5px; font-weight: 600;
-  text-transform: uppercase; letter-spacing: 0.06em;
+  text-transform: uppercase; letter-spacing: 0.06em; user-select: none;
 }
 .grp-head:hover { color: var(--tx); }
 .grp-head.active .grp-name::after { content: ''; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: #3fb67a; margin-left: 6px; vertical-align: middle; }
@@ -95,6 +95,7 @@ body.panel-off .panel { transform: translateX(calc(100% + 20px)); opacity: 0; po
 .row {
   display: flex; align-items: center; gap: 9px; padding: 6px 8px 6px calc(8px + var(--d) * 16px);
   border-radius: 7px; cursor: pointer; position: relative; transition: background 0.12s;
+  user-select: none;
 }
 .row:hover { background: rgba(255, 255, 255, 0.05); }
 .row.sel { background: rgba(217, 119, 87, 0.13); }
@@ -214,7 +215,9 @@ body.panel-off .legend { transform: translateX(-50%); }
   display: flex; align-items: center; gap: 7px; padding: 4px 10px; border-radius: 7px;
   background: rgba(20, 24, 31, 0.72); border: 1px solid rgba(255,255,255,.07);
   font-size: 12px; font-weight: 600; color: #d6dae2; letter-spacing: 0.01em; white-space: nowrap;
+  pointer-events: auto; cursor: pointer; user-select: none; transition: border-color 0.15s, background 0.15s;
 }
+.room-label:hover { background: rgba(32, 38, 48, 0.85); border-color: rgba(255,255,255,.16); }
 .room-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--tx-3); }
 .room-label.active .room-dot { background: #3fb67a; animation: pulse 2s infinite; }
 .room-name { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

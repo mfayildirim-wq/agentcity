@@ -47,6 +47,10 @@ automatisch freigeben), optional Titel. Die Steuerung läuft über das
 - Sprechblase zeigt den letzten Satz bzw. das aktuelle Werkzeug
 - Klick auf Figur oder Listeneintrag → Kamera folgt, Detailkarte mit Reitern Aktivität, Plan, Änderungen (Diffs),
   Terminalausgaben und Subagenten
+- Doppelklick auf Figur, Raumschild, Listenkopf oder Boden im Haus → Kamera fliegt nah in das Haus (aus der
+  offenen Vorderseite, nie hinter einer Wand); Doppelklick auf leere Fläche außerhalb der Häuser lässt die
+  Auswahl nur fallen
+- Maus: linke Taste ziehen verschiebt die Ansicht, rechte Taste dreht, Rad zoomt
 - Chat-Leiste unten für den ausgewählten steuerbaren Agenten: Enter sendet, Umschalt+Enter Zeilenumbruch, ↑/↓
   Verlauf, `/befehl` geht unverändert an das Tool, Esc bricht eine laufende Antwort ab; Modus des Tools und
   City-Modus (Bestätigen/Auto) in der Kopfzeile

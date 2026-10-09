@@ -2,18 +2,20 @@
 import { STATIONS, STATUS, agentColor, agentName } from '../config.js';
 import { esc, DIAMOND, ICON } from './common.js';
 import { svgIcon } from '../config.js';
-import { groupByHouse, houseName } from '../houses.js';
+import { groupByHouse, houseName, houseOf } from '../houses.js';
 
 export class AgentList {
-  constructor(el, { onSelect, onHover, onAdopt = () => {} }) {
+  constructor(el, { onSelect, onHover, onAdopt = () => {}, onNavigate = () => {} }) {
     this.el = el;
     this.onAdopt = onAdopt;
     this.adopting = new Set();
     this.onSelect = onSelect;
     this.onHover = onHover;
+    this.onNavigate = onNavigate;
     this.agents = [];
     this.selected = null;
     this.collapsed = new Set();
+    this.lastClick = null; // { id, t } gegen das Abwählen als Teil eines Doppelklicks
 
     el.addEventListener('click', (e) => {
       const tog = e.target.closest('[data-toggle]');
@@ -33,7 +35,24 @@ export class AgentList {
         return;
       }
       const row = e.target.closest('[data-id]');
-      if (row) this.onSelect(row.dataset.id === this.selected ? null : row.dataset.id);
+      if (row) {
+        const id = row.dataset.id;
+        const now = performance.now();
+        if (this.lastClick && this.lastClick.id === id && now - this.lastClick.t < 400) return; // Teil eines Doppelklicks
+        this.lastClick = { id, t: now };
+        this.onSelect(id === this.selected ? null : id);
+      }
+    });
+    el.addEventListener('dblclick', (e) => {
+      const head = e.target.closest('[data-toggle]');
+      if (head) { this.onNavigate(head.dataset.toggle, true); return; }
+      const row = e.target.closest('[data-id]');
+      if (row) {
+        const a = this.agents.find((x) => x.id === row.dataset.id);
+        if (!a) return;
+        if (this.selected !== a.id) this.onSelect(a.id);
+        this.onNavigate(houseOf(a), true);
+      }
     });
     el.addEventListener('pointerover', (e) => {
       const row = e.target.closest('[data-id]');

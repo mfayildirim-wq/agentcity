@@ -329,6 +329,8 @@ export class Room {
     const el = document.createElement('div');
     el.className = 'room-label';
     el.innerHTML = `<span class="room-dot"></span><span class="room-name"></span><span class="room-proj"></span><span class="room-count"></span>`;
+    el.addEventListener('click', () => this.world.focusRoom(this.id));
+    el.addEventListener('dblclick', () => this.world.focusRoom(this.id, true));
     el.querySelector('.room-name').textContent = this.name;
     this.countEl = el.querySelector('.room-count');
     this.labelEl = el;

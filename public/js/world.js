@@ -8,6 +8,7 @@ import { Avatar } from './avatar.js';
 import { agentColor } from './config.js';
 import { Room, ROOM_W, ROOM_D, ROOM_GAP, DOOR, STREET } from './room.js';
 import { houseOf, houseName } from './houses.js';
+import { approachDir, roomFocus, isDouble } from './view.js';
 import { Town } from './town.js';
 import { MAX_LIVE_SCREENS } from './screen.js';
 
@@ -37,6 +38,8 @@ export class World {
     this.labelsVisible = true;
     this.clock = new THREE.Clock();
     this.focus = null;
+    this.closeNext = false; // nächster Fokus = Nahsicht (Doppelklick)
+    this.lastClick = null; // { t, x, y } zur Doppelklick-Erkennung
 
     // Canvas mit Alphakanal: Hintergrundfarbe kommt vom Dokument, die Leinwände scheinen durch ihren Ausschnitt
     const r = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', alpha: true });
@@ -77,6 +80,8 @@ export class World {
     controls.minDistance = 8;
     controls.maxDistance = 140;
     controls.screenSpacePanning = false;
+    // linke Taste verschiebt, rechte dreht (Rad zoomt)
+    controls.mouseButtons = { LEFT: THREE.MOUSE.PAN, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
     controls.addEventListener('start', () => { this.focus = null; });
     this.controls = controls;
 
@@ -137,12 +142,20 @@ export class World {
     let down = null;
     el.addEventListener('pointerdown', (e) => { down = { x: e.clientX, y: e.clientY }; });
     el.addEventListener('pointerup', (e) => {
-      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || this.dragDone) { this.dragDone = false; return; }
+      if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5 || this.dragDone) { this.dragDone = false; this.lastClick = null; return; }
+      const last = this.lastClick;
+      const dbl = isDouble(last, performance.now(), e.clientX, e.clientY);
+      this.lastClick = { t: performance.now(), x: e.clientX, y: e.clientY };
       const key = this.pick(e);
-      if (key) { this.onSelect?.(key); return; }
+      if (key) { this.selectClose(key, dbl); return; }
+      if (dbl) {
+        // Doppelklick auf den Boden: in das Haus fliegen, über dem der Zeiger liegt
+        const room = this.roomAt(e);
+        if (room) { this.focusRoom(room.id, true); return; }
+      }
       // Klick auf eine Leinwand mit Inhalt öffnet die Session des gezeigten Artefakts
-      const room = this.pickScreen(e);
-      if (room?.screen?.artifact && this.onOpenScreen) { this.onOpenScreen(room.screen.artifact.sessionId); return; }
+      const screen = this.pickScreen(e);
+      if (screen?.screen?.artifact && this.onOpenScreen) { this.onOpenScreen(screen.screen.artifact.sessionId); return; }
       this.onSelect?.(null);
     });
     // Drag & Drop einer Figur (Capture-Phase am Container: vor OrbitControls, die während des Ziehens ruhen)
@@ -356,14 +369,39 @@ export class World {
     }
   }
 
-  focusOn(key) {
+  focusOn(key, close = false) {
     const av = this.avatars.get(key);
     if (!av) return;
+    const closeFocus = close || (this.closeNext && performance.now() - this.closeNext < 800);
+    this.closeNext = 0;
     const target = av.group.position.clone();
     target.y = 0.8;
-    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
-    const pos = target.clone().add(dir.multiplyScalar(28));
+    const dir = approachDir(this.camera.position.clone().sub(this.controls.target).toArray());
+    const pos = target.clone().add(new THREE.Vector3(...dir).multiplyScalar(closeFocus ? 13 : 28));
     this.focus = { target, pos, follow: key };
+  }
+
+  // Kamera fliegt in ein Haus (Doppelklick auf Boden, Raumschild oder Listenkopf)
+  focusRoom(id, close = false) {
+    const room = this.rooms.get(id);
+    if (!room) return;
+    const { target, pos } = roomFocus(room.group.position.toArray(), close);
+    this.focus = { target: new THREE.Vector3(...target), pos: new THREE.Vector3(...pos) };
+  }
+
+  // Raum, über dem der Zeiger liegt (Schnitt mit dem Boden, Prüfung des Grundrisses)
+  roomAt(e) {
+    if (e.clientX === undefined) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((e.clientX - rect.left) / rect.width) * 2 - 1, -((e.clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const p = new THREE.Vector3();
+    if (!this.raycaster.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), p)) return null;
+    for (const room of this.rooms.values()) {
+      const local = p.clone().sub(room.group.position);
+      if (Math.abs(local.x) <= ROOM_W / 2 + 0.5 && Math.abs(local.z) <= ROOM_D / 2 + 0.5) return room;
+    }
+    return null;
   }
 
   select(key, focus = true) {
@@ -372,6 +410,19 @@ export class World {
     if (key && this.avatars.get(key)) {
       this.avatars.get(key).selected = true;
       if (focus) this.focusOn(key);
+    }
+  }
+
+  // Auswahl per Klick; bei Doppelklick fliegt die Kamera nah heran.
+  // Das Store feuert 'selected' nur bei Wechsel (per rAF → world.select → focusOn):
+  // gleiche Figur → direkt fokussieren; Wechsel → Nahsicht über closeNext, das focusOn verbraucht
+  selectClose(key, dbl = false) {
+    const same = this.selected === key;
+    if (dbl) this.closeNext = performance.now();
+    this.onSelect?.(key);
+    if (dbl) {
+      if (same) this.focusOn(key, true);
+      else requestAnimationFrame(() => { if (this.closeNext) this.focusOn(key, true); });
     }
   }
 
@@ -417,7 +468,7 @@ export class World {
       // Aussehen geändert (Farbe/Stil des Tools): Figur an gleicher Stelle neu aufbauen
       if (av && !av.leaving && av.look !== Avatar.lookOf(a)) {
         const old = av;
-        av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k) });
+        av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k), onLabelDoubleClick: (k) => this.selectClose(k, true) });
         Object.assign(av, { room: old.room, selected: old.selected, hovered: old.hovered, path: old.path, facing: old.facing,
           targetFacing: old.targetFacing, atStation: old.atStation, atLounge: old.atLounge, slotKey: old.slotKey,
           stationId: old.stationId, opacity: 1 });
@@ -434,7 +485,7 @@ export class World {
         this.avatars.set(a.id, av);
       }
       if (!av) {
-        av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k) });
+        av = new Avatar(a, { onLabelClick: (k) => this.onSelect?.(k), onLabelDoubleClick: (k) => this.selectClose(k, true) });
         av.room = room;
         av.setLabelsVisible(this.labelsVisible);
         room.group.add(av.group);

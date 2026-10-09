@@ -53,7 +53,7 @@ const mat = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, rough
 const WALK_SPEED = 2.1;
 
 export class Avatar {
-  constructor(agent, { onLabelClick } = {}) {
+  constructor(agent, { onLabelClick, onLabelDoubleClick } = {}) {
     this.key = agent.id;
     this.kind = agent.kind;
     this.data = agent;
@@ -71,7 +71,7 @@ export class Avatar {
     this.blend = { walk: 0, work: 0, think: 0, sit: 0, raise: 0, floor: 0 };
     this.materials = [];
     this.build(agent);
-    this.buildLabel(agent, onLabelClick);
+    this.buildLabel(agent, onLabelClick, onLabelDoubleClick);
   }
 
   m(color, extra) { const x = mat(color, extra); this.materials.push(x); return x; }
@@ -325,11 +325,12 @@ export class Avatar {
     }
   }
 
-  buildLabel(a, onClick) {
+  buildLabel(a, onClick, onDoubleClick) {
     const el = document.createElement('div');
     el.className = `tag ${a.kind}`;
     el.innerHTML = `<div class="bubble"></div><div class="tag-name"><i></i><span></span></div>`;
     el.addEventListener('pointerdown', (e) => { e.stopPropagation(); onClick?.(this.key); });
+    el.addEventListener('dblclick', (e) => { e.stopPropagation(); onDoubleClick?.(this.key); });
     this.labelEl = el;
     this.bubbleEl = el.querySelector('.bubble');
     this.nameEl = el.querySelector('.tag-name span');

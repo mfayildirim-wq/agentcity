@@ -47,6 +47,7 @@ const world = new World($('stage'), $('labels'), {
 const list = new AgentList($('list'), {
   onSelect: select, onHover: hover,
   onAdopt: (id) => { const a = store.state.agents.get(id); return a && sessionAction('adopt', a); },
+  onNavigate: (house, close = false) => world.focusRoom(house, close),
 });
 // Terminals: Nutzer-Shell (Chat-Leiste) und schreibgeschützte Agenten-Ausgabe (Detailkarte)
 const shell = new ShellView({
