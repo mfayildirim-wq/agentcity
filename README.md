@@ -5,6 +5,7 @@ Figur, jedes Haus (ein Auftrag mit Hauptagent und Subagenten) ein eigener Raum. 
 und eigene) lassen sich starten, im Chat oder Terminal steuern, Rückfragen im Browser bestätigen, in Besprechungen
 zusammenbringen, mit Aufgaben versorgen und später im Verlauf nachsehen und fortsetzen. Sessions, die du im eigenen
 Terminal startest, erscheinen ebenfalls (Dateibeobachtung) und lassen sich übernehmen.
+<img width="1849" height="1059" alt="grafik" src="https://github.com/user-attachments/assets/fc6b80ae-6f0a-4967-8991-ad311948a6f6" />
 
 ## Start
 
