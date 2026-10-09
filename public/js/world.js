@@ -13,6 +13,8 @@ import { MAX_LIVE_SCREENS } from './screen.js';
 
 const SCREEN_BUDGET_MS = 500; // Abstand der Sichtbarkeitsprüfung der Leinwände
 
+const ROW_LEN = 3; // Häuser je Reihe
+
 // ---------------------------------------------------------------- Welt
 export class World {
   // dragInfo(key) → { name, color } für ziehbare Figuren (steuerbare Hauptagenten) oder null;
@@ -314,17 +316,18 @@ export class World {
     return room;
   }
 
+  // Häuser in Reihen zu je ROW_LEN: das Haus mit der neuesten Session steht vorn links, ältere dahinter
   layoutRooms() {
-    const rooms = [...this.rooms.values()].sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
+    const rooms = [...this.rooms.values()].sort((a, b) => b.order - a.order || a.name.localeCompare(b.name));
     const n = Math.max(1, rooms.length);
-    const cols = Math.ceil(Math.sqrt(n));
+    const cols = Math.min(n, ROW_LEN);
     const rows = Math.ceil(n / cols);
     rooms.forEach((room, i) => {
       const c = i % cols, rr = Math.floor(i / cols);
       room.group.position.set(
         (c - (cols - 1) / 2) * (ROOM_W + ROOM_GAP),
         0,
-        (rr - (rows - 1) / 2) * (ROOM_D + ROOM_GAP + 1.5),
+        ((rows - 1) / 2 - rr) * (ROOM_D + ROOM_GAP + 1.5),
       );
     });
     this.town.layout(rooms.map((room) => room.group.position));
@@ -390,15 +393,22 @@ export class World {
 
     // Räume anlegen/aufräumen
     let changed = false;
+    const firstRooms = this.rooms.size === 0; // erster Aufbau: Kamera sofort setzen statt anfliegen
     for (const name of byRoom.keys()) if (!this.rooms.has(name)) { this.roomFor(name); changed = true; }
     for (const [name, room] of this.rooms) {
       if (!byRoom.has(name) && ![...this.avatars.values()].some((av) => av.room === room && !av.removed)) {
         room.dispose(); this.rooms.delete(name); changed = true;
       }
     }
-    // Raumschild: Name aus dem ältesten Hauptagenten, Ordner als Untertitel
-    for (const [name, list] of byRoom) this.rooms.get(name).setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project);
-    if (changed) { this.layoutRooms(); if (!this.selected) this.resetView(); }
+    // Raumschild: Name aus dem ältesten Hauptagenten, Ordner als Untertitel;
+    // Reihenfolge: neueste Session des Hauses (Beitritt holt ein Haus nach vorn) – Änderung ordnet die Reihen neu
+    for (const [name, list] of byRoom) {
+      const room = this.rooms.get(name);
+      room.setName(houseName(list), list.find((a) => a.kind === 'main')?.project ?? list[0]?.project);
+      const order = Math.max(0, ...list.filter((a) => a.kind === 'main').map((a) => a.startedAt || 0));
+      if (order !== room.order) { room.order = order; changed = true; }
+    }
+    if (changed) { this.layoutRooms(); if (!this.selected) this.resetView(firstRooms); }
 
     // Figuren anlegen/aktualisieren
     for (const a of agents) {
@@ -461,7 +471,6 @@ export class World {
       const active = list.filter((a) => a.status !== 'done' && a.status !== 'idle').length;
       room.countEl.textContent = `${list.length}`;
       room.labelEl.classList.toggle('active', active > 0);
-      room.order = Math.min(...list.map((a) => a.startedAt || Infinity));
       for (const st of Object.values(room.stations)) {
         // Stabile Sitzordnung: Hauptagent vorne, dann nach Startzeit
         // am Tisch sitzen Besprechungsteilnehmer vorn (feste Plätze)
